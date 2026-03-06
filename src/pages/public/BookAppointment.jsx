@@ -239,7 +239,7 @@ export default function BookAppointment() {
         const q = query(
           collection(db, 'centres', centreId, 'appointments'),
           where('date', '==', dateStr),
-          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
+          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
         )
         const snap = await getDocs(q)
         const taken = snap.docs.map(d => d.data().appointmentTime).filter(Boolean)
@@ -332,7 +332,7 @@ export default function BookAppointment() {
         const apptSnap = await getDocs(
           query(collection(db, 'centres', centreId, 'appointments'),
             where('date', '==', dateStr),
-            where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
+            where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
           )
         )
 
@@ -403,7 +403,7 @@ export default function BookAppointment() {
         const snap = await getDocs(query(
           collection(db, 'centres', centreId, 'appointments'),
           where('date', '==', dateStr),
-          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
+          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
         ))
         setBookedSlots(snap.docs.map(d => d.data().appointmentTime).filter(Boolean))
         setSelSlot(null)

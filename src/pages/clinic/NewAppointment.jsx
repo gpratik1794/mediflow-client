@@ -123,7 +123,9 @@ export default function NewAppointment() {
     setLoading(false)
   }
 
-  const TIME_SLOTS = generateSlots(profile?.clinicStart, profile?.clinicEnd, profile?.slotDuration)
+  const MORNING_SLOTS = generateSlots(profile?.morningStart || '09:00', profile?.morningEnd || '13:00', profile?.slotDuration)
+  const EVENING_SLOTS = generateSlots(profile?.eveningStart || '16:00', profile?.eveningEnd || '20:00', profile?.slotDuration)
+  const TIME_SLOTS = [...MORNING_SLOTS, ...EVENING_SLOTS]
 
   return (
     <Layout title="Book Appointment">
