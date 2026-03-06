@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { auth, db } from '../firebase/config'
 import { onAuthStateChanged } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 
 const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
@@ -25,15 +25,20 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let profileUnsub = null
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Clean up previous profile listener if user changed
+      if (profileUnsub) { profileUnsub(); profileUnsub = null }
+
       if (firebaseUser) {
         setUser(firebaseUser)
 
-        // Load centre profile
-        try {
-          const profileSnap = await getDoc(doc(db, 'centres', firebaseUser.uid, 'profile', 'main'))
-          if (profileSnap.exists()) setProfile(profileSnap.data())
-        } catch (e) { console.warn('Profile load failed', e) }
+        // Load centre profile — real-time so campaign/settings changes reflect immediately
+        profileUnsub = onSnapshot(
+          doc(db, 'centres', firebaseUser.uid, 'profile', 'main'),
+          snap => { if (snap.exists()) setProfile(snap.data()) },
+          e => console.warn('Profile listen failed', e)
+        )
 
         // Load client subscription record from admin
         try {
@@ -52,7 +57,7 @@ export function AuthProvider({ children }) {
       }
       setLoading(false)
     })
-    return unsub
+    return () => { unsub(); if (profileUnsub) profileUnsub() }
   }, [])
 
   // Show blocked screen if account deactivated/expired
