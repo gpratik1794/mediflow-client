@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Input, Select, Btn, Toast } from '../../components/UI'
-import { createAppointment, getNextToken, getAppointments } from '../../firebase/clinicDb'
+import { createAppointment, getNextToken, getAppointments, upsertClinicPatient } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { searchPatients } from '../../firebase/db'
 import { format } from 'date-fns'
@@ -94,6 +94,12 @@ export default function NewAppointment() {
     try {
       const tokenNumber = await getNextToken(user.uid, form.date)
       const apptId = await createAppointment(user.uid, { ...form, tokenNumber, status: 'scheduled' })
+
+      // Save / update patient record
+      await upsertClinicPatient(user.uid, {
+        name: form.patientName, phone: form.phone,
+        age: form.age, gender: form.gender
+      })
 
       // Send WhatsApp confirmation
       if (profile?.whatsappCampaigns?.length) {

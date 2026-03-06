@@ -13,6 +13,7 @@ import Billing     from './pages/Billing'
 import Reports     from './pages/Reports'
 import Tests       from './pages/Tests'
 import Patients    from './pages/Patients'
+import PatientDetail from './pages/PatientDetail'
 import Settings    from './pages/Settings'
 
 // Clinic pages
@@ -56,6 +57,7 @@ function AppRoutes() {
 
       {/* Diagnostic routes */}
       <Route path="/patients"    element={<Protected><Patients /></Protected>} />
+      <Route path="/patients/:id" element={<Protected><PatientDetail /></Protected>} />
       <Route path="/visits"      element={<Protected><Visits /></Protected>} />
       <Route path="/visits/new"  element={<Protected><NewVisit /></Protected>} />
       <Route path="/visits/:id"  element={<Protected><VisitDetail /></Protected>} />

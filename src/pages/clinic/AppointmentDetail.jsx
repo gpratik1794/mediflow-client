@@ -52,47 +52,39 @@ export default function AppointmentDetail() {
   }
 
   async function handleStatusUpdate(newStatus) {
-    // Late check-in penalty logic:
-    // If this patient was skipped (status=scheduled, but patients after them have already
-    // gone in-consultation or done), apply the penalty from profile settings.
-    if (newStatus === 'waiting' && appt.status === 'scheduled') {
-      const penalty = parseInt(profile?.lateCheckinPenalty || '0')
-      if (penalty > 0) {
-        // Count how many patients with higher token numbers have been called in or done today
-        const allToday = await getAppointments(user.uid, appt.date)
-        const skippedPast = allToday.filter(a =>
-          a.id !== appt.id &&
-          a.tokenNumber > appt.tokenNumber &&
-          (a.status === 'in-consultation' || a.status === 'done')
-        ).length
-
-        if (skippedPast > 0) {
-          // Patient is late — find current last token and push them back by penalty count
-          const activeTokens = allToday
-            .filter(a => a.status !== 'cancelled')
-            .map(a => a.tokenNumber)
-          const maxToken = Math.max(...activeTokens)
-          const newPosition = maxToken + penalty
-
-          await updateAppointment(user.uid, id, {
-            status: 'waiting',
-            tokenNumber: newPosition,
-            lateCheckin: true,
-            originalToken: appt.tokenNumber
-          })
-          setAppt(a => ({ ...a, status: 'waiting', tokenNumber: newPosition, lateCheckin: true }))
-          setToast({
-            message: `Late check-in: token reassigned to #${newPosition} (${penalty} patient wait penalty)`,
-            type: 'info'
-          })
-          return
+    try {
+      if (newStatus === 'waiting' && appt.status === 'scheduled') {
+        const penalty = parseInt(profile?.lateCheckinPenalty || '0')
+        if (penalty > 0) {
+          try {
+            const allToday = await getAppointments(user.uid, appt.date)
+            const skippedPast = allToday.filter(a =>
+              a.id !== appt.id &&
+              a.tokenNumber > appt.tokenNumber &&
+              (a.status === 'in-consultation' || a.status === 'done')
+            ).length
+            if (skippedPast > 0) {
+              const maxToken = Math.max(...allToday.filter(a => a.status !== 'cancelled').map(a => a.tokenNumber))
+              const newPosition = maxToken + penalty
+              await updateAppointment(user.uid, id, {
+                status: 'waiting', tokenNumber: newPosition,
+                lateCheckin: true, originalToken: appt.tokenNumber
+              })
+              setAppt(a => ({ ...a, status: 'waiting', tokenNumber: newPosition, lateCheckin: true }))
+              setToast({ message: `Late check-in: token #${newPosition} (${penalty} patient penalty)`, type: 'info' })
+              return
+            }
+          } catch (penaltyErr) {
+            console.warn('[Penalty check failed, using normal update]', penaltyErr)
+          }
         }
       }
+      await updateAppointment(user.uid, id, { status: newStatus })
+      setAppt(a => ({ ...a, status: newStatus }))
+      setToast({ message: `Status → ${STATUS_LABELS[newStatus]}`, type: 'success' })
+    } catch (e) {
+      setToast({ message: 'Failed to update status. Try again.', type: 'error' })
     }
-
-    await updateAppointment(user.uid, id, { status: newStatus })
-    setAppt(a => ({ ...a, status: newStatus }))
-    setToast({ message: `Status → ${STATUS_LABELS[newStatus]}`, type: 'success' })
   }
 
   async function handleSaveVitals() {

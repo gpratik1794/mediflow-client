@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react'
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useAuth } from '../utils/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { Card, CardHeader, Empty } from '../components/UI'
 
 export default function Patients() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [patients, setPatients] = useState([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
@@ -46,14 +48,15 @@ export default function Patients() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Patient', 'Age / Gender', 'Phone', 'Registered'].map(h => (
+                {['Patient', 'Age / Gender', 'Phone', 'Registered', ''].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '10px 20px', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--muted)', fontWeight: 500, borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map(p => (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}
+                <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                  onClick={() => navigate(`/patients/${p.id}`)}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-light)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
@@ -72,6 +75,7 @@ export default function Patients() {
                   <td style={{ padding: '13px 20px', fontSize: 12, color: 'var(--muted)' }}>
                     {p.createdAt?.seconds ? new Date(p.createdAt.seconds * 1000).toLocaleDateString('en-IN') : '—'}
                   </td>
+                  <td style={{ padding: '13px 20px', color: 'var(--teal)', fontSize: 18 }}>›</td>
                 </tr>
               ))}
             </tbody>

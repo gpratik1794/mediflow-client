@@ -76,7 +76,7 @@ export default function ClinicPatients() {
               {filtered.map(p => (
                 <tr key={p.id}
                   style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                  onClick={() => navigate(`/clinic/appointments/new?phone=${p.phone}`)}
+                  onClick={() => navigate(`/patients/${p.id}`)}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-light)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
