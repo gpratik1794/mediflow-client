@@ -60,9 +60,11 @@ export async function getAppointment(centreId, apptId) {
 // Get all appointments for a patient by phone
 export async function getPatientAppointments(centreId, phone) {
   const ref = collection(db, 'centres', centreId, 'appointments')
-  const q = query(ref, where('phone', '==', phone), orderBy('date', 'desc'), limit(50))
+  const q = query(ref, where('phone', '==', phone), limit(50))
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => b.date?.localeCompare(a.date))
 }
 
 // ── PRESCRIPTIONS ────────────────────────────────────────────────────────────
@@ -72,21 +74,22 @@ export async function getPrescriptions(centreId, patientPhone, months = 6) {
   cutoff.setMonth(cutoff.getMonth() - months)
   const cutoffStr = cutoff.toISOString().split('T')[0]
   const ref = collection(db, 'centres', centreId, 'prescriptions')
-  const q = query(
-    ref,
-    where('patientPhone', '==', patientPhone),
-    where('date', '>=', cutoffStr),
-    orderBy('date', 'desc')
-  )
+  // Use only single where to avoid composite index requirement — sort client-side
+  const q = query(ref, where('patientPhone', '==', patientPhone), limit(50))
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(p => p.date >= cutoffStr)
+    .sort((a, b) => b.date?.localeCompare(a.date))
 }
 
 export async function getAllPrescriptions(centreId, patientPhone) {
   const ref = collection(db, 'centres', centreId, 'prescriptions')
-  const q = query(ref, where('patientPhone', '==', patientPhone), orderBy('date', 'desc'), limit(100))
+  const q = query(ref, where('patientPhone', '==', patientPhone), limit(100))
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => b.date?.localeCompare(a.date))
 }
 
 export async function getPrescription(centreId, prescId) {

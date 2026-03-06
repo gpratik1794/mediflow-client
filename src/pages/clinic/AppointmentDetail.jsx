@@ -38,15 +38,23 @@ export default function AppointmentDetail() {
 
   async function loadData() {
     setLoading(true)
-    const snap = await getDoc(doc(db, 'centres', user.uid, 'appointments', id))
-    if (snap.exists()) {
-      const data = { id: snap.id, ...snap.data() }
-      setAppt(data)
-      setVitals(data.vitals || {})
-      setNotes(data.clinicalNotes || '')
-      // Load prescriptions for this patient
-      const presc = await getPrescriptions(user.uid, data.phone)
-      setPresc(presc)
+    try {
+      const snap = await getDoc(doc(db, 'centres', user.uid, 'appointments', id))
+      if (snap.exists()) {
+        const data = { id: snap.id, ...snap.data() }
+        setAppt(data)
+        setVitals(data.vitals || {})
+        setNotes(data.clinicalNotes || '')
+        // Load prescriptions — wrapped separately so a missing index doesn't block loading
+        try {
+          const presc = await getPrescriptions(user.uid, data.phone)
+          setPresc(presc)
+        } catch (e) {
+          console.warn('[Prescriptions] Index may be missing:', e)
+        }
+      }
+    } catch (e) {
+      console.error('[AppointmentDetail] Load failed:', e)
     }
     setLoading(false)
   }

@@ -1,27 +1,24 @@
 // src/pages/clinic/NewAppointment.jsx
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
-import { Card, CardHeader, Input, Select, Btn, Toast } from '../../components/UI'
+import { Card, CardHeader, Btn, Toast } from '../../components/UI'
 import { createAppointment, getNextToken, getAppointments, upsertClinicPatient } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { searchPatients } from '../../firebase/db'
 import { format } from 'date-fns'
 
-// Generate time slots dynamically based on clinic settings
 function generateSlots(startTime, endTime, intervalMinutes) {
   const slots = []
   const [startH, startM] = (startTime || '09:00').split(':').map(Number)
   const [endH, endM]     = (endTime   || '20:00').split(':').map(Number)
   const interval = Number(intervalMinutes) || 30
-
   let current = startH * 60 + startM
   const end   = endH   * 60 + endM
-
   while (current < end) {
-    const h   = Math.floor(current / 60)
-    const m   = current % 60
+    const h    = Math.floor(current / 60)
+    const m    = current % 60
     const ampm = h < 12 ? 'AM' : 'PM'
     const h12  = h === 0 ? 12 : h > 12 ? h - 12 : h
     slots.push(`${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`)
@@ -31,62 +28,80 @@ function generateSlots(startTime, endTime, intervalMinutes) {
   return slots
 }
 
+const iStyle = {
+  width: '100%', padding: '10px 14px', borderRadius: 10,
+  border: '1.5px solid var(--border)', fontSize: 13,
+  fontFamily: 'DM Sans, sans-serif', outline: 'none',
+  background: 'var(--surface)', color: 'var(--navy)', boxSizing: 'border-box'
+}
+const lStyle = { fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }
+
 export default function NewAppointment() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
-  const [loading, setLoading]     = useState(false)
-  const [toast, setToast]         = useState(null)
+  const [searchParams] = useSearchParams()
+  const [loading, setLoading]             = useState(false)
+  const [toast, setToast]                 = useState(null)
   const [searchResults, setSearchResults] = useState([])
-  const [bookedSlots, setBookedSlots] = useState([])  // slots already taken on selected date
-
+  const [bookedSlots, setBookedSlots]     = useState([])
+  const [searching, setSearching]         = useState(false)
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const [form, setForm] = useState({
-    patientName: '', phone: '', age: '', gender: '',
+    patientName: '', phone: searchParams.get('phone') || '',
+    age: '', dob: '', gender: '',
     visitType: 'New Visit', appointmentTime: 'Walk-in (no slot)',
     date: today, chiefComplaint: '', refDoctor: '',
     consultationFee: '', paymentStatus: 'pending'
   })
 
-  // Load booked slots whenever date changes
+  useEffect(() => { if (form.phone?.length === 10) doSearch(form.phone) }, [])
   useEffect(() => {
-    async function loadBooked() {
-      if (!user) return
-      const existing = await getAppointments(user.uid, form.date)
-      const taken = existing
-        .filter(a => a.status !== 'cancelled')
-        .map(a => a.appointmentTime)
-      setBookedSlots(taken)
-    }
-    loadBooked()
+    if (!user) return
+    getAppointments(user.uid, form.date).then(ex =>
+      setBookedSlots(ex.filter(a => a.status !== 'cancelled').map(a => a.appointmentTime))
+    )
   }, [form.date, user])
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
-  async function handlePhoneSearch(phone) {
-    setForm(f => ({ ...f, phone }))
-    if (phone.length === 10) {
+  async function doSearch(phone) {
+    setSearching(true)
+    try {
       const results = await searchPatients(user.uid, phone)
-      setSearchResults(results)
-    } else setSearchResults([])
+      if (results.length === 1) { fillPatient(results[0]) }
+      else setSearchResults(results)
+    } catch (e) { console.error(e) }
+    setSearching(false)
+  }
+
+  function handlePhoneChange(e) {
+    const phone = e.target.value.replace(/\D/g, '').slice(0, 10)
+    setForm(f => ({ ...f, phone }))
+    setSearchResults([])
+    if (phone.length === 10) doSearch(phone)
   }
 
   function fillPatient(p) {
-    setForm(f => ({ ...f, patientName: p.name, phone: p.phone, age: p.age, gender: p.gender }))
+    setForm(f => ({ ...f, patientName: p.name || f.patientName, age: p.age || f.age, dob: p.dob || f.dob, gender: p.gender || f.gender }))
     setSearchResults([])
+  }
+
+  function handleDobChange(e) {
+    const dob = e.target.value
+    const age = dob ? String(Math.floor((new Date() - new Date(dob)) / (365.25 * 24 * 60 * 60 * 1000))) : ''
+    setForm(f => ({ ...f, dob, age }))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.patientName || !form.phone) return
-
-    // Double-check slot not taken (catches race conditions)
     if (form.appointmentTime !== 'Walk-in (no slot)') {
-      const existing = await getAppointments(user.uid, form.date)
-      const conflict = existing.find(a => a.appointmentTime === form.appointmentTime && a.status !== 'cancelled')
+      const ex = await getAppointments(user.uid, form.date)
+      const conflict = ex.find(a => a.appointmentTime === form.appointmentTime && a.status !== 'cancelled')
       if (conflict) {
-        setToast({ message: `${form.appointmentTime} is already booked. Please choose another slot.`, type: 'error' })
-        setBookedSlots(existing.filter(a => a.status !== 'cancelled').map(a => a.appointmentTime))
+        setToast({ message: `${form.appointmentTime} is already booked.`, type: 'error' })
+        setBookedSlots(ex.filter(a => a.status !== 'cancelled').map(a => a.appointmentTime))
         return
       }
     }
@@ -94,24 +109,13 @@ export default function NewAppointment() {
     try {
       const tokenNumber = await getNextToken(user.uid, form.date)
       const apptId = await createAppointment(user.uid, { ...form, tokenNumber, status: 'scheduled' })
-
-      // Save / update patient record
-      await upsertClinicPatient(user.uid, {
-        name: form.patientName, phone: form.phone,
-        age: form.age, gender: form.gender
-      })
-
-      // Send WhatsApp confirmation
+      await upsertClinicPatient(user.uid, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
       if (profile?.whatsappCampaigns?.length) {
-        sendCampaign(
-          profile.whatsappCampaigns, 'appt_confirm', form.phone,
+        sendCampaign(profile.whatsappCampaigns, 'appt_confirm', form.phone,
           [form.patientName, profile?.ownerName || 'Doctor', form.date, form.appointmentTime],
-          null,
-          { centreId: user.uid, patientName: form.patientName, apptId }
-        )
+          null, { centreId: user.uid, patientName: form.patientName, apptId })
       }
-
-      setToast({ message: `Token #${tokenNumber} booked. WhatsApp sent!`, type: 'success' })
+      setToast({ message: `Token #${tokenNumber} booked!`, type: 'success' })
       setTimeout(() => navigate(`/clinic/appointments/${apptId}`), 1200)
     } catch (err) {
       setToast({ message: 'Booking failed. Try again.', type: 'error' })
@@ -119,55 +123,83 @@ export default function NewAppointment() {
     setLoading(false)
   }
 
-  const visitTypeOpts = ['New Visit', 'Follow-up', 'Emergency', 'Review']
-  const genderOpts = [{ value:'', label:'Gender' }, { value:'Male', label:'Male' }, { value:'Female', label:'Female' }, { value:'Other', label:'Other' }]
   const TIME_SLOTS = generateSlots(profile?.clinicStart, profile?.clinicEnd, profile?.slotDuration)
 
   return (
     <Layout title="Book Appointment">
       <form onSubmit={handleSubmit}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, maxWidth: 860 }}>
-
           <Card>
-            <CardHeader title="Patient Details" sub="Search by phone to auto-fill returning patients" />
+            <CardHeader title="Patient Details" sub="Enter phone number — returning patients auto-fill" />
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* Phone search */}
+              {/* Phone */}
               <div style={{ position: 'relative' }}>
-                <Input label="Mobile Number *" type="tel" value={form.phone}
-                  onChange={e => handlePhoneSearch(e.target.value)} placeholder="10-digit number" required />
+                <label style={lStyle}>Mobile Number *</label>
+                <div style={{ position: 'relative' }}>
+                  <input type="tel" value={form.phone} onChange={handlePhoneChange}
+                    placeholder="e.g. 9876543210" required maxLength={10}
+                    style={{ ...iStyle, paddingRight: searching ? 40 : 14 }} />
+                  {searching && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--teal)' }}>🔍</span>}
+                </div>
                 {searchResults.length > 0 && (
-                  <div style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                    borderRadius: 10, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', marginTop: 4
-                  }}>
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden', marginTop: 4 }}>
                     {searchResults.map(p => (
-                      <div key={p.id} onClick={() => fillPatient(p)} style={{
-                        padding: '12px 16px', cursor: 'pointer', fontSize: 13,
-                        borderBottom: '1px solid var(--border)'
-                      }}
+                      <div key={p.id} onClick={() => fillPatient(p)}
+                        style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-light)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <strong>{p.name}</strong> · {p.age}y · {p.gender}
-                        <div style={{ fontSize: 11, color: 'var(--teal)' }}>↩ Returning patient — click to fill</div>
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)' }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--teal)', marginTop: 2 }}>{p.age ? `${p.age}y` : ''} {p.gender ? `· ${p.gender}` : ''} · Tap to fill ↩</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              <Input label="Full Name *" value={form.patientName}
-                onChange={setF('patientName')} placeholder="Patient full name" required />
-
-              <div style={{ display: 'flex', gap: 12 }}>
-                <Input label="Age" type="number" value={form.age} onChange={setF('age')} placeholder="Years" />
-                <Select label="Gender" value={form.gender} onChange={setF('gender')} options={genderOpts} />
+              {/* Name */}
+              <div>
+                <label style={lStyle}>Full Name *</label>
+                <input value={form.patientName} onChange={setF('patientName')}
+                  placeholder="e.g. Rahul Sharma" required style={iStyle} />
               </div>
 
-              <Input label="Chief Complaint (optional)" value={form.chiefComplaint}
-                onChange={setF('chiefComplaint')} placeholder="e.g. Fever and cough since 3 days" />
+              {/* Age + DOB + Gender */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={lStyle}>Age (years)</label>
+                  <input type="number" value={form.age} onChange={setF('age')}
+                    placeholder="e.g. 32" min="0" max="150" style={iStyle} />
+                </div>
+                <div>
+                  <label style={lStyle}>Date of Birth</label>
+                  <input type="date" value={form.dob} onChange={handleDobChange}
+                    style={{ ...iStyle, color: form.dob ? 'var(--navy)' : '#aaa' }} />
+                </div>
+                <div>
+                  <label style={lStyle}>Gender</label>
+                  <select value={form.gender} onChange={setF('gender')} style={iStyle}>
+                    <option value="">Select gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Chief Complaint */}
+              <div>
+                <label style={lStyle}>Chief Complaint</label>
+                <input value={form.chiefComplaint} onChange={setF('chiefComplaint')}
+                  placeholder="e.g. Fever and cough since 3 days" style={iStyle} />
+              </div>
+
+              {/* Ref Doctor */}
+              <div>
+                <label style={lStyle}>Referred By (optional)</label>
+                <input value={form.refDoctor} onChange={setF('refDoctor')}
+                  placeholder="e.g. Dr. Mehta" style={iStyle} />
+              </div>
             </div>
           </Card>
 
@@ -176,30 +208,21 @@ export default function NewAppointment() {
             <Card>
               <CardHeader title="Schedule" />
               <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <Input label="Date" type="date" value={form.date} onChange={setF('date')} />
-
                 <div>
-                  <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5 }}>Time Slot</label>
+                  <label style={lStyle}>Date</label>
+                  <input type="date" value={form.date} onChange={setF('date')} min={today} style={iStyle} />
+                </div>
+                <div>
+                  <label style={lStyle}>Time Slot</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
                     {TIME_SLOTS.map(slot => {
                       const isBooked = slot !== 'Walk-in (no slot)' && bookedSlots.includes(slot)
-                      const isSelected = form.appointmentTime === slot
+                      const isSel    = form.appointmentTime === slot
                       return (
                         <button key={slot} type="button"
                           onClick={() => !isBooked && setForm(f => ({ ...f, appointmentTime: slot }))}
                           disabled={isBooked}
-                          style={{
-                            padding: '7px 4px', borderRadius: 8, border: '1.5px solid',
-                            borderColor: isSelected ? 'var(--teal)' : isBooked ? 'var(--border)' : 'var(--border)',
-                            background: isSelected ? 'var(--teal-light)' : isBooked ? 'var(--bg)' : 'none',
-                            color: isSelected ? 'var(--teal)' : isBooked ? 'var(--muted)' : 'var(--slate)',
-                            fontSize: 11, cursor: isBooked ? 'not-allowed' : 'pointer',
-                            fontFamily: 'DM Sans, sans-serif',
-                            fontWeight: isSelected ? 600 : 400,
-                            opacity: isBooked ? 0.5 : 1,
-                            transition: 'all 0.15s',
-                            position: 'relative'
-                          }}>
+                          style={{ padding: '7px 4px', borderRadius: 8, border: '1.5px solid', borderColor: isSel ? 'var(--teal)' : 'var(--border)', background: isSel ? 'var(--teal-light)' : isBooked ? 'var(--bg)' : 'none', color: isSel ? 'var(--teal)' : isBooked ? 'var(--muted)' : 'var(--slate)', fontSize: 11, cursor: isBooked ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: isSel ? 600 : 400, opacity: isBooked ? 0.5 : 1 }}>
                           {slot}
                           {isBooked && <span style={{ display: 'block', fontSize: 9, color: 'var(--red)', marginTop: 1 }}>Booked</span>}
                         </button>
@@ -207,58 +230,50 @@ export default function NewAppointment() {
                     })}
                   </div>
                 </div>
-
-                <Select label="Visit Type" value={form.visitType} onChange={setF('visitType')}
-                  options={visitTypeOpts} />
-
-                {/* Fee */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-                  <Input label="Consultation Fee (₹)" type="number" value={form.consultationFee}
-                    onChange={setF('consultationFee')} placeholder="e.g. 300" />
-                  <Select label="Payment" value={form.paymentStatus} onChange={setF('paymentStatus')}
-                    options={[
-                      { value: 'pending', label: 'Pending' },
-                      { value: 'paid',    label: 'Paid' },
-                    ]} />
+                <div>
+                  <label style={lStyle}>Visit Type</label>
+                  <select value={form.visitType} onChange={setF('visitType')} style={iStyle}>
+                    {['New Visit','Follow-up','Emergency','Review'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={lStyle}>Fee (₹)</label>
+                    <input type="number" value={form.consultationFee} onChange={setF('consultationFee')} placeholder="e.g. 300" style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Payment</label>
+                    <select value={form.paymentStatus} onChange={setF('paymentStatus')} style={iStyle}>
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </Card>
 
-            {/* Summary */}
             <Card>
               <div style={{ padding: '16px 20px' }}>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>APPOINTMENT SUMMARY</div>
-                {form.patientName && (
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--navy)' }}>{form.patientName}</div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>{form.phone}</div>
-                  </div>
-                )}
-                <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 4 }}>
-                  📅 {form.date} · {form.appointmentTime}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 16 }}>
-                  🏥 {form.visitType}
-                </div>
-                {profile?.aisynergyKey && (
-                  <div style={{ background: 'var(--teal-light)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--teal)', marginBottom: 12 }}>
-                    💬 WhatsApp confirmation will be sent to {form.phone || 'patient'}
-                  </div>
-                )}
-                <Btn type="submit" disabled={loading || !form.patientName || !form.phone}
-                  style={{ width: '100%', justifyContent: 'center' }}>
+                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--muted)', marginBottom: 10 }}>Summary</div>
+                {form.patientName
+                  ? <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>{form.patientName}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{form.phone}{form.age ? ` · ${form.age}y` : ''}</div>
+                    </div>
+                  : <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>Enter patient details →</div>
+                }
+                <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 4 }}>📅 {form.date}</div>
+                <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 4 }}>🕐 {form.appointmentTime}</div>
+                <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 16 }}>🏥 {form.visitType}</div>
+                <Btn type="submit" disabled={loading || !form.patientName || !form.phone} style={{ width: '100%', justifyContent: 'center' }}>
                   {loading ? 'Booking…' : '✓ Confirm Booking'}
                 </Btn>
-                <Btn variant="ghost" onClick={() => navigate(-1)}
-                  style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
-                  Cancel
-                </Btn>
+                <Btn variant="ghost" onClick={() => navigate(-1)} style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>Cancel</Btn>
               </div>
             </Card>
           </div>
         </div>
       </form>
-
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </Layout>
   )
