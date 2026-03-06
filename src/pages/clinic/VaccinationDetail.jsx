@@ -40,6 +40,25 @@ const VAR_LABELS = {
 }
 function varLabel(v) { return VAR_LABELS[v] || v || 'Param' }
 
+// Human-readable labels for WA param variable names
+const VAR_LABELS = {
+  childName:'Child Name', vaccineName:'Vaccine Name', givenDate:'Date Given',
+  nextVaccineInfo:'Next Vaccine Info', nextVaccineName:'Next Vaccine Name',
+  nextVaccineDate:'Next Vaccine Date', centreName:'Centre Name',
+  parentName:'Parent Name', guardianName:'Guardian Name',
+}
+function varLabel(v) { return VAR_LABELS[v] || v || 'Param' }
+
+// Find a campaign by purpose — also matches custom campaigns whose name contains the purpose key
+function findCampaign(campaigns, purpose) {
+  return campaigns.find(c =>
+    c.enabled !== false && (
+      c.purpose === purpose ||
+      (c.purpose === 'custom' && c.name?.toLowerCase().includes(purpose.toLowerCase()))
+    )
+  )
+}
+
 // WA status badge
 function WaBadge({ label, status }) {
   const styles = {
@@ -111,7 +130,7 @@ export default function VaccinationDetail() {
   // Send WA for a vaccine and return { mother: 'sent'|'failed', father: 'sent'|'failed' }
   async function sendVaccineWa(vaccineId, vaccineName, params) {
     const campaigns = profile?.whatsappCampaigns || []
-    const campaign  = campaigns.find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+    const campaign  = findCampaign(campaigns, 'vaccine_given')
     const phones = { mother: child?.motherPhone || null, father: child?.fatherPhone || null }
     // parentName: father's name for father, guardianName fallback for mother
     const parentNames = {
@@ -154,7 +173,7 @@ export default function VaccinationDetail() {
       const nextVaccine  = DEFAULT_VACCINE_SCHEDULE.find(v => !(updatedGiven[v.id]?.givenDate))
 
       // Send WhatsApp (unless skipped)
-      const hasGivenCampaign = (profile?.whatsappCampaigns || []).some(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+      const hasGivenCampaign = !!(findCampaign(profile?.whatsappCampaigns || [], 'vaccine_given'))
       let waStatus = null
       if (hasGivenCampaign && !skipWa) {
         const results = await sendVaccineWa(markModal.vaccine.id, markModal.vaccine.name, waParams)
@@ -241,7 +260,7 @@ export default function VaccinationDetail() {
     .map(v => ({ ...v, record: given[v.id] }))
     .sort((a,b) => b.record.givenDate.localeCompare(a.record.givenDate))
   const nextVaccine = DEFAULT_VACCINE_SCHEDULE.find(v => !(given[v.id]?.givenDate))
-  const hasGivenCampaign = (profile?.whatsappCampaigns || []).some(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+  const hasGivenCampaign = !!(findCampaign(profile?.whatsappCampaigns || [], 'vaccine_given'))
 
   function openMarkModal(vaccine) {
     setMarkModal({ vaccine })
@@ -261,7 +280,7 @@ export default function VaccinationDetail() {
       parentName: child?.guardianName || 'Parent',
       guardianName: child?.guardianName || '',
     }
-    const campaign = (profile?.whatsappCampaigns || []).find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+    const campaign = findCampaign(profile?.whatsappCampaigns || [], 'vaccine_given')
     setWaParams(
       campaign?.paramMapping?.length
         ? campaign.paramMapping.map(v => autoValues[v] ?? '')
@@ -491,7 +510,7 @@ export default function VaccinationDetail() {
                   <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 10, color: '#15803D', marginBottom: 2 }}>Will send to: {[child?.motherPhone && 'Mother', child?.fatherPhone && 'Father'].filter(Boolean).join(' + ') || 'No phone numbers on file'}</div>
                     {((() => {
-                      const campaign = (profile?.whatsappCampaigns || []).find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+                      const campaign = findCampaign(profile?.whatsappCampaigns || [], 'vaccine_given')
                       return campaign?.paramMapping?.length
                         ? campaign.paramMapping.map(v => varLabel(v))
                         : ['Child Name', 'Vaccine Name', 'Date Given', 'Next Vaccine Info', 'Centre Name']
