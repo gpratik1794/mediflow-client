@@ -40,6 +40,7 @@ export default function AdminClientDetail() {
 
   async function handleSave() {
     setSaving(true)
+    const selectedPlan = PLANS[form.plan]
     await updateClient(id, {
       centreName: form.centreName,
       ownerName: form.ownerName,
@@ -50,7 +51,13 @@ export default function AdminClientDetail() {
       subscriptionEndDate: form.subscriptionEndDate,
       city: form.city,
       address: form.address,
+      ...(selectedPlan?.centreType ? { centreType: selectedPlan.centreType } : {}),
     })
+    // Auto-apply modules from plan
+    if (selectedPlan?.modules) {
+      const hasVaccination = selectedPlan.modules.includes('vaccination')
+      await toggleModule(id, 'vaccination', hasVaccination)
+    }
     await load()
     setEditMode(false)
     showToast('Changes saved', 'success')
@@ -276,40 +283,43 @@ export default function AdminClientDetail() {
           </div>
 
           {/* Add-on Modules */}
-          {(client.centreType === 'clinic' || client.centreType === 'both') && (
-            <div style={cardStyle}>
-              <div style={cardHead}>🧩 Add-on Modules</div>
-              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {[
-                  { key: 'vaccination', label: '💉 Vaccination Module', desc: 'Child profiles, vaccine schedules, parent WhatsApp reminders' },
-                ].map(mod => {
-                  const isOn = client.modules?.[mod.key] === true
-                  return (
-                    <div key={mod.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: isOn ? '#F0FDF4' : 'var(--bg)' }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{mod.label}</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{mod.desc}</div>
-                      </div>
-                      <button onClick={async () => {
-                        await toggleModule(id, mod.key, !isOn)
-                        await load()
-                        showToast(`${mod.label} ${!isOn ? 'enabled' : 'disabled'}`, 'success')
-                      }} style={{
-                        padding: '6px 16px', borderRadius: 20, border: '1.5px solid',
-                        borderColor: isOn ? '#16A34A' : 'var(--border)',
-                        background: isOn ? '#16A34A' : 'none',
-                        color: isOn ? '#fff' : 'var(--slate)',
-                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        fontFamily: 'DM Sans, sans-serif', flexShrink: 0, marginLeft: 16
-                      }}>
-                        {isOn ? '● ON' : '○ OFF'}
-                      </button>
+          <div style={cardStyle}>
+            <div style={cardHead}>🧩 Add-on Modules</div>
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { key: 'vaccination', label: '💉 Vaccination Module', desc: 'Child profiles, vaccine schedules, parent WhatsApp reminders', forTypes: ['clinic', 'both'] },
+              ].filter(mod => !mod.forTypes || mod.forTypes.includes(client.centreType)).map(mod => {
+                const isOn = client.modules?.[mod.key] === true
+                return (
+                  <div key={mod.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: isOn ? '#F0FDF4' : 'var(--bg)' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{mod.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{mod.desc}</div>
                     </div>
-                  )
-                })}
-              </div>
+                    <button onClick={async () => {
+                      await toggleModule(id, mod.key, !isOn)
+                      await load()
+                      showToast(`${mod.label} ${!isOn ? 'enabled' : 'disabled'}`, 'success')
+                    }} style={{
+                      padding: '6px 16px', borderRadius: 20, border: '1.5px solid',
+                      borderColor: isOn ? '#16A34A' : 'var(--border)',
+                      background: isOn ? '#16A34A' : 'none',
+                      color: isOn ? '#fff' : 'var(--slate)',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'DM Sans, sans-serif', flexShrink: 0, marginLeft: 16
+                    }}>
+                      {isOn ? '● ON' : '○ OFF'}
+                    </button>
+                  </div>
+                )
+              })}
+              {(!client.centreType || client.centreType === 'diagnostic') && (
+                <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 4px' }}>
+                  No add-on modules available for Diagnostic-only centres.
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Danger zone */}
           {!isDeactivated && (

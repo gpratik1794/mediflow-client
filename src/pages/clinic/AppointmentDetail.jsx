@@ -24,7 +24,7 @@ const STATUS_COLORS = {
 
 export default function AppointmentDetail() {
   const { id } = useParams()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [appt, setAppt]         = useState(null)
   const [prescriptions, setPresc] = useState([])

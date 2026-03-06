@@ -88,10 +88,12 @@ export async function deleteLead(phone) {
 // ── SUBSCRIPTION HELPERS ──────────────────────────────────────────────
 
 export const PLANS = {
-  clinic_basic: { label: 'Clinic Basic', price: 999, modules: ['clinic'] },
-  diagnostic_basic: { label: 'Diagnostic Basic', price: 2499, modules: ['diagnostic'] },
-  diagnostic_pro: { label: 'Diagnostic Pro', price: 3999, modules: ['diagnostic'] },
-  combo: { label: 'Combo (Clinic + Diagnostic)', price: 2999, modules: ['clinic', 'diagnostic'] },
+  clinic_basic:       { label: 'Clinic Basic',                    price: 999,  centreType: 'clinic',      modules: [] },
+  clinic_vaccination: { label: 'Clinic + Vaccination',            price: 1499, centreType: 'clinic',      modules: ['vaccination'] },
+  diagnostic_basic:   { label: 'Diagnostic Basic',                price: 1999, centreType: 'diagnostic',  modules: [] },
+  diagnostic_pro:     { label: 'Diagnostic Pro',                  price: 2999, centreType: 'diagnostic',  modules: [] },
+  combo:              { label: 'Clinic + Diagnostic',             price: 2999, centreType: 'both',        modules: [] },
+  combo_vaccination:  { label: 'Clinic + Diagnostic + Vaccination', price: 3499, centreType: 'both',      modules: ['vaccination'] },
 }
 
 export function getSubscriptionStatus(client) {
