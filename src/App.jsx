@@ -27,6 +27,7 @@ import AppointmentDetail  from './pages/clinic/AppointmentDetail'
 import PrescriptionWriter from './pages/clinic/PrescriptionWriter'
 import PrescriptionDetail from './pages/clinic/PrescriptionDetail'
 import FollowUps          from './pages/clinic/FollowUps'
+import BookAppointment    from './pages/public/BookAppointment'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
@@ -79,6 +80,9 @@ function AppRoutes() {
       <Route path="/clinic/prescription/new"      element={<Protected><PrescriptionWriter /></Protected>} />
       <Route path="/clinic/prescription/:id"      element={<Protected><PrescriptionDetail /></Protected>} />
       <Route path="/clinic/followups"             element={<Protected><FollowUps /></Protected>} />
+
+      {/* Public booking — no auth required */}
+      <Route path="/book/:centreId" element={<BookAppointment />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

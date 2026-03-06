@@ -423,6 +423,10 @@ export default function Settings() {
     aisynergyApiKey: '',
     lateCheckinPenalty: '0',
     weeklyOff: [],
+    morningStart: '09:00',
+    morningEnd:   '13:00',
+    eveningStart: '16:00',
+    eveningEnd:   '20:00',
     vaccinationReminderDays: '7,3,1',
   })
 
@@ -445,6 +449,10 @@ export default function Settings() {
         aisynergyApiKey:    profile.aisynergyApiKey    || '',
         lateCheckinPenalty: profile.lateCheckinPenalty || '0',
         weeklyOff:           profile.weeklyOff          || [],
+        morningStart: profile.morningStart || '09:00',
+        morningEnd:   profile.morningEnd   || '13:00',
+        eveningStart: profile.eveningStart || '16:00',
+        eveningEnd:   profile.eveningEnd   || '20:00',
         vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
       }))
     }
@@ -469,7 +477,7 @@ export default function Settings() {
   }
 
   function handleSaveCentreInfo()          { saveFields({ centreName: form.centreName, ownerName: form.ownerName, phone: form.phone, city: form.city, address: form.address }) }
-  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, clinicStart: form.clinicStart, clinicEnd: form.clinicEnd, lateCheckinPenalty: form.lateCheckinPenalty, weeklyOff: form.weeklyOff }) }
+  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, clinicStart: form.clinicStart, clinicEnd: form.clinicEnd, lateCheckinPenalty: form.lateCheckinPenalty, weeklyOff: form.weeklyOff, morningStart: form.morningStart, morningEnd: form.morningEnd, eveningStart: form.eveningStart, eveningEnd: form.eveningEnd }) }
   function handleSaveBilling()             { saveFields({ gst: form.gst, gstNumber: form.gstNumber }) }
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
 
@@ -531,6 +539,23 @@ export default function Settings() {
             <div style={{ display: 'flex', gap: 12 }}>
               <Input label="Clinic Start Time" type="time" value={form.clinicStart} onChange={setF('clinicStart')} />
               <Input label="Clinic End Time"   type="time" value={form.clinicEnd}   onChange={setF('clinicEnd')} />
+            </div>
+
+            {/* Morning / Evening session split */}
+            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>🌅 Morning Session</div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Input label="Morning Start" type="time" value={form.morningStart} onChange={setF('morningStart')} />
+                <Input label="Morning End"   type="time" value={form.morningEnd}   onChange={setF('morningEnd')} />
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginTop: 4 }}>🌆 Evening Session</div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Input label="Evening Start" type="time" value={form.eveningStart} onChange={setF('eveningStart')} />
+                <Input label="Evening End"   type="time" value={form.eveningEnd}   onChange={setF('eveningEnd')} />
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.6 }}>
+                These timings are shown on the public appointment booking form. Slots between morning end and evening start will not be available for online booking.
+              </div>
             </div>
 
             <Select label="Late Check-in Queue Penalty"
