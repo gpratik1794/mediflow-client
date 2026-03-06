@@ -266,7 +266,7 @@ export default function BookAppointment() {
   // ── Navigation ──
   function canProceed() {
     if (step === 1) return name.trim().length > 0 && phone.trim().length === 10
-    if (step === 2) return selDoc !== null
+    if (step === 2) return doctors.length === 0 || selDoc !== null
     if (step === 3) return selDate !== null
     if (step === 4) return selSlot !== null
     return true

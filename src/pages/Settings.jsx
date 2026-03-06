@@ -400,6 +400,84 @@ function CampaignTester({ campaigns, purpose, phone, centreName }) {
   return null
 }
 
+// ── Doctors Manager ───────────────────────────────────────────────────────────
+
+function DoctorsManager({ doctors, onChange }) {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft]   = useState({ name: '', degree: '', speciality: '' })
+  const [err, setErr]       = useState('')
+
+  const iStyle = { width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)', outline: 'none' }
+  const lStyle = { fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }
+
+  function handleAdd() {
+    if (!draft.name.trim()) { setErr('Doctor name is required'); return }
+    onChange([...doctors, { name: draft.name.trim(), degree: draft.degree.trim(), speciality: draft.speciality.trim() }])
+    setDraft({ name: '', degree: '', speciality: '' })
+    setAdding(false); setErr('')
+  }
+
+  function handleRemove(i) {
+    onChange(doctors.filter((_, j) => j !== i))
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {doctors.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: 13 }}>
+          No doctors added yet. Add doctors so patients can select them while booking.
+        </div>
+      )}
+
+      {doctors.map((d, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,var(--teal),var(--teal-dark,#087A6B))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
+            {d.name.charAt(d.name.lastIndexOf(' ') + 1)}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{d.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+              {[d.degree, d.speciality].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+          <button type="button" onClick={() => handleRemove(i)} style={{ background: '#FEF2F2', border: 'none', borderRadius: 8, color: '#DC2626', fontSize: 11, fontWeight: 600, padding: '5px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
+            ✕ Remove
+          </button>
+        </div>
+      ))}
+
+      {adding ? (
+        <div style={{ border: '1.5px solid var(--teal)', borderRadius: 12, padding: 16, background: 'var(--teal-light)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--teal)' }}>Add Doctor</div>
+          <div>
+            <span style={lStyle}>Full Name *</span>
+            <input style={iStyle} value={draft.name} onChange={e => { setDraft(d => ({ ...d, name: e.target.value })); setErr('') }} placeholder="e.g. Dr. Amit Shah" autoFocus />
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <span style={lStyle}>Degree</span>
+              <input style={iStyle} value={draft.degree} onChange={e => setDraft(d => ({ ...d, degree: e.target.value }))} placeholder="e.g. MBBS, MD" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <span style={lStyle}>Speciality</span>
+              <input style={iStyle} value={draft.speciality} onChange={e => setDraft(d => ({ ...d, speciality: e.target.value }))} placeholder="e.g. General Physician" />
+            </div>
+          </div>
+          {err && <div style={{ fontSize: 12, color: '#DC2626' }}>{err}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={handleAdd} style={{ padding: '9px 20px', borderRadius: 9, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>✓ Add Doctor</button>
+            <button type="button" onClick={() => { setAdding(false); setErr('') }} style={{ padding: '9px 16px', borderRadius: 9, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--slate)', fontSize: 13, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px dashed var(--teal)', background: 'none', color: 'var(--teal)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', width: '100%' }}>
+          + Add Doctor
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Booking Link Box ──────────────────────────────────────────────────────────
 
 function BookingLinkBox({ uid }) {
@@ -489,6 +567,7 @@ export default function Settings() {
     aisynergyApiKey: '',
     lateCheckinPenalty: '0',
     weeklyOff: [],
+    doctors: [],
     morningStart: '09:00',
     morningEnd:   '13:00',
     eveningStart: '16:00',
@@ -515,6 +594,7 @@ export default function Settings() {
         aisynergyApiKey:    profile.aisynergyApiKey    || '',
         lateCheckinPenalty: profile.lateCheckinPenalty || '0',
         weeklyOff:           profile.weeklyOff          || [],
+        doctors:             profile.doctors             || [],
         morningStart: profile.morningStart || '09:00',
         morningEnd:   profile.morningEnd   || '13:00',
         eveningStart: profile.eveningStart || '16:00',
@@ -546,6 +626,7 @@ export default function Settings() {
   function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, clinicStart: form.clinicStart, clinicEnd: form.clinicEnd, lateCheckinPenalty: form.lateCheckinPenalty, weeklyOff: form.weeklyOff, morningStart: form.morningStart, morningEnd: form.morningEnd, eveningStart: form.eveningStart, eveningEnd: form.eveningEnd }) }
   function handleSaveBilling()             { saveFields({ gst: form.gst, gstNumber: form.gstNumber }) }
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
+  function handleSaveDoctors()             { saveFields({ doctors: form.doctors }) }
 
   // Legacy full-save kept for reference (not used in UI anymore)
   async function handleSave(e) {
@@ -684,6 +765,18 @@ export default function Settings() {
             </div>
             <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
               {saving ? 'Saving…' : '💾 Save Clinic Settings'}
+            </Btn>
+          </Section>
+        )}
+
+        {(centreType === 'clinic' || centreType === 'both') && (
+          <Section title="👨‍⚕️ Doctors">
+            <DoctorsManager
+              doctors={form.doctors || []}
+              onChange={updated => setForm(f => ({ ...f, doctors: updated }))}
+            />
+            <Btn type="button" onClick={handleSaveDoctors} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+              {saving ? 'Saving…' : '💾 Save Doctors'}
             </Btn>
           </Section>
         )}
