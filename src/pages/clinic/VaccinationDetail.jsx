@@ -31,23 +31,12 @@ function formatDate(str) {
   return new Date(str).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-// Human-readable labels for variable names used in param mapping
+// Human-readable labels for WA param variable names
 const VAR_LABELS = {
-  childName:       'Child Name',
-  vaccineName:     'Vaccine Name',
-  givenDate:       'Date Given',
-  nextVaccineInfo: 'Next Vaccine Info',
-  nextVaccineName: 'Next Vaccine Name',
-  nextVaccineDate: 'Next Vaccine Date',
-  centreName:      'Centre Name',
-  parentName:      'Parent Name',
-  guardianName:    'Guardian Name',
-  patientName:     'Patient Name',
-  apptDate:        'Appointment Date',
-  apptTime:        'Appointment Time',
-  doctorName:      'Doctor Name',
-  customParam1:    'Custom Param 1',
-  customParam2:    'Custom Param 2',
+  childName:'Child Name', vaccineName:'Vaccine Name', givenDate:'Date Given',
+  nextVaccineInfo:'Next Vaccine Info', nextVaccineName:'Next Vaccine Name',
+  nextVaccineDate:'Next Vaccine Date', centreName:'Centre Name',
+  parentName:'Parent Name', guardianName:'Guardian Name',
 }
 function varLabel(v) { return VAR_LABELS[v] || v || 'Param' }
 
@@ -119,36 +108,26 @@ export default function VaccinationDetail() {
     setSaving(false)
   }
 
-  // Send WA for a vaccine and return { mother: 'sent'|'failed'|null, father: ... }
-  async function sendVaccineWa(vaccineId, vaccineName, waParamsArr) {
+  // Send WA for a vaccine and return { mother: 'sent'|'failed', father: 'sent'|'failed' }
+  async function sendVaccineWa(vaccineId, vaccineName, params) {
     const campaigns = profile?.whatsappCampaigns || []
     const campaign  = campaigns.find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
     const phones = { mother: child?.motherPhone || null, father: child?.fatherPhone || null }
+    // parentName: father's name for father, guardianName fallback for mother
     const parentNames = {
       mother: child?.motherName || child?.guardianName || 'Parent',
       father: child?.guardianName || 'Parent',
     }
     const results = { mother: null, father: null }
-
-    // Extract values from waParamsArr by mapping position (user may have edited them)
-    const mapping = campaign?.paramMapping || ['childName','vaccineName','givenDate','nextVaccineInfo','centreName']
-    function getParam(key) {
-      const idx = mapping.indexOf(key)
-      return idx >= 0 ? (waParamsArr[idx] ?? '') : ''
-    }
-
     for (const [who, phone] of Object.entries(phones)) {
       if (!phone) continue
       try {
-        let finalParams
-        if (campaign?.paramMapping?.length) {
-          // Rebuild from mapping, substituting parentName per recipient
-          finalParams = campaign.paramMapping.map((v, i) =>
-            v === 'parentName' ? parentNames[who] : (waParamsArr[i] ?? '')
-          )
-        } else {
-          finalParams = waParamsArr
-        }
+        // If campaign has paramMapping, substitute parentName per recipient; else use params as-is
+        const finalParams = campaign?.paramMapping?.length
+          ? campaign.paramMapping.map((v, i) =>
+              v === 'parentName' ? parentNames[who] : (params[i] ?? '')
+            )
+          : params
         const res = await sendCampaign(campaigns, 'vaccine_given', phone, finalParams)
         results[who] = res?.ok ? 'sent' : 'failed'
       } catch { results[who] = 'failed' }
@@ -273,34 +252,21 @@ export default function VaccinationDetail() {
     const nextVaccineInfo = nextV && child?.dob
       ? `${nextV.name} on ${formatDate(getDueDate(child.dob, nextV.atMonths))}`
       : 'All vaccines completed!'
-
-    // Auto-fill values keyed by variable name
     const autoValues = {
-      childName:       child?.childName || '',
-      vaccineName:     vaccine.name,
-      givenDate:       fmtToday,
-      nextVaccineInfo: nextVaccineInfo,
+      childName: child?.childName || '', vaccineName: vaccine.name,
+      givenDate: fmtToday, nextVaccineInfo,
       nextVaccineName: nextV?.name || 'All vaccines completed!',
       nextVaccineDate: nextV && child?.dob ? formatDate(getDueDate(child.dob, nextV.atMonths)) : '',
-      centreName:      profile?.centreName || '',
-      parentName:      child?.guardianName || 'Parent',
-      guardianName:    child?.guardianName || '',
+      centreName: profile?.centreName || '',
+      parentName: child?.guardianName || 'Parent',
+      guardianName: child?.guardianName || '',
     }
-
     const campaign = (profile?.whatsappCampaigns || []).find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
-    if (campaign?.paramMapping?.length) {
-      // Build waParams in mapping order
-      setWaParams(campaign.paramMapping.map(v => autoValues[v] ?? ''))
-    } else {
-      // Fallback: 5 standard params
-      setWaParams([
-        autoValues.childName,
-        autoValues.vaccineName,
-        autoValues.givenDate,
-        autoValues.nextVaccineInfo,
-        autoValues.centreName,
-      ])
-    }
+    setWaParams(
+      campaign?.paramMapping?.length
+        ? campaign.paramMapping.map(v => autoValues[v] ?? '')
+        : [autoValues.childName, autoValues.vaccineName, autoValues.givenDate, autoValues.nextVaccineInfo, autoValues.centreName]
+    )
   }
 
   if (loading) return <Layout title="Vaccination"><div style={{ padding: 60, textAlign: 'center', color: 'var(--muted)' }}>Loading…</div></Layout>
@@ -502,15 +468,7 @@ export default function VaccinationDetail() {
               <div><label style={lStyle}>Date Given *</label>
                 <div style={{ position: 'relative' }} onClick={e => e.currentTarget.querySelector('input').showPicker?.()}>
                   <input type="date" value={markForm.givenDate} max={today}
-                    onChange={e => {
-                      const newDate = e.target.value
-                      setMarkForm(f => ({ ...f, givenDate: newDate }))
-                      // Update givenDate in waParams at the correct slot
-                      const campaign = (profile?.whatsappCampaigns || []).find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
-                      const mapping = campaign?.paramMapping || ['childName','vaccineName','givenDate','nextVaccineInfo','centreName']
-                      const dateIdx = mapping.indexOf('givenDate')
-                      if (dateIdx >= 0) setWaParams(p => { const n=[...p]; n[dateIdx]=formatDate(newDate); return n })
-                    }}
+                    onChange={e => { setMarkForm(f => ({ ...f, givenDate: e.target.value })); setWaParams(p => { const n=[...p]; n[2]=formatDate(e.target.value); return n }) }}
                     style={{ ...iStyle, cursor: 'pointer', colorScheme: 'light' }} />
                 </div>
               </div>
