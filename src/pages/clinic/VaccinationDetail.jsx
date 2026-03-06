@@ -102,15 +102,24 @@ export default function VaccinationDetail() {
   // Send WA for a vaccine and return { motherStatus, fatherStatus }
   async function sendVaccineWa(vaccineId, vaccineName, params) {
     const campaigns = profile?.whatsappCampaigns || []
-    const phones = {
-      mother: child?.motherPhone || null,
-      father: child?.fatherPhone || null,
-    }
+    const campaign  = campaigns.find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+    // If campaign has paramMapping, use it to build params automatically
+    const finalParams = campaign?.paramMapping?.length
+      ? buildParamsFromMapping(campaign.paramMapping, {
+          childName: child?.childName, vaccineName,
+          givenDate: params[2], // date given (already formatted)
+          nextVaccineInfo: params[3], nextVaccineName: params[3],
+          nextVaccineDate: '', centreName: profile?.centreName,
+          guardianName: child?.guardianName,
+          motherPhone: child?.motherPhone, fatherPhone: child?.fatherPhone,
+        })
+      : params
+    const phones = { mother: child?.motherPhone || null, father: child?.fatherPhone || null }
     const results = { mother: null, father: null }
     for (const [who, phone] of Object.entries(phones)) {
       if (!phone) continue
       try {
-        const res = await sendCampaign(campaigns, 'vaccine_given', phone, params)
+        const res = await sendCampaign(campaigns, 'vaccine_given', phone, finalParams)
         results[who] = res?.ok ? 'sent' : 'failed'
       } catch { results[who] = 'failed' }
     }
@@ -461,7 +470,12 @@ export default function VaccinationDetail() {
                 {!skipWa && (
                   <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 10, color: '#15803D', marginBottom: 2 }}>Will send to: {[child?.motherPhone && 'Mother', child?.fatherPhone && 'Father'].filter(Boolean).join(' + ') || 'No phone numbers on file'}</div>
-                    {['Child Name', 'Vaccine Name', 'Date Given', 'Next Vaccine Info', 'Centre Name'].map((label, i) => (
+                    {((() => {
+                      const campaign = (profile?.whatsappCampaigns || []).find(c => c.purpose === 'vaccine_given')
+                      return campaign?.paramMapping?.length
+                        ? campaign.paramMapping.map(v => v || `Param`)
+                        : ['Child Name', 'Vaccine Name', 'Date Given', 'Next Vaccine Info', 'Centre Name']
+                    })()).map((label, i) => (
                       <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <label style={{ fontSize: 9, color: '#15803D', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>Param {i+1}: {label}</label>
                         <input value={waParams[i] || ''} onChange={e => setWaParams(p => { const n=[...p]; n[i]=e.target.value; return n })}
