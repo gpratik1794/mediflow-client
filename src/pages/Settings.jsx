@@ -400,6 +400,72 @@ function CampaignTester({ campaigns, purpose, phone, centreName }) {
   return null
 }
 
+// ── Booking Link Box ──────────────────────────────────────────────────────────
+
+function BookingLinkBox({ uid }) {
+  const [copied, setCopied] = useState(false)
+  const link = uid ? `https://mediflow.synergyconsultant.co.in/book/${uid}` : ''
+
+  function copyLink() {
+    if (!link) return
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.7 }}>
+        Share this link with your patients — they can book appointments directly without logging in.
+        Paste it in your WhatsApp auto-reply, Google listing, or anywhere you like.
+      </div>
+
+      {/* Link display box */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+        <div style={{
+          flex: 1, padding: '10px 14px', borderRadius: 10,
+          border: '1.5px solid var(--border)', background: '#fff',
+          fontSize: 12, color: 'var(--navy)', fontFamily: 'monospace',
+          wordBreak: 'break-all', lineHeight: 1.6,
+          userSelect: 'all',
+        }}>
+          {link || 'Loading…'}
+        </div>
+        <button
+          type="button"
+          onClick={copyLink}
+          style={{
+            padding: '10px 16px', borderRadius: 10, border: 'none', flexShrink: 0,
+            background: copied ? '#16A34A' : 'var(--teal)',
+            color: 'white', fontSize: 13, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+            transition: 'background 0.2s', whiteSpace: 'nowrap',
+          }}
+        >
+          {copied ? '✓ Copied!' : '📋 Copy'}
+        </button>
+      </div>
+
+      {/* Open form button */}
+      <a
+        href={link}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          padding: '11px 0', borderRadius: 10,
+          border: '1.5px solid var(--teal)', background: 'var(--teal-light)',
+          color: 'var(--teal)', fontSize: 13, fontWeight: 600,
+          textDecoration: 'none', fontFamily: 'DM Sans, sans-serif',
+        }}
+      >
+        ↗ Open Booking Form
+      </a>
+    </div>
+  )
+}
+
 // ── Main Settings component ───────────────────────────────────────────────────
 
 export default function Settings() {
@@ -619,6 +685,12 @@ export default function Settings() {
             <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
               {saving ? 'Saving…' : '💾 Save Clinic Settings'}
             </Btn>
+          </Section>
+        )}
+
+        {(centreType === 'clinic' || centreType === 'both') && (
+          <Section title="🔗 Online Appointment Booking">
+            <BookingLinkBox uid={user?.uid} />
           </Section>
         )}
 
