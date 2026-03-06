@@ -40,15 +40,6 @@ const VAR_LABELS = {
 }
 function varLabel(v) { return VAR_LABELS[v] || v || 'Param' }
 
-// Human-readable labels for WA param variable names
-const VAR_LABELS = {
-  childName:'Child Name', vaccineName:'Vaccine Name', givenDate:'Date Given',
-  nextVaccineInfo:'Next Vaccine Info', nextVaccineName:'Next Vaccine Name',
-  nextVaccineDate:'Next Vaccine Date', centreName:'Centre Name',
-  parentName:'Parent Name', guardianName:'Guardian Name',
-}
-function varLabel(v) { return VAR_LABELS[v] || v || 'Param' }
-
 // Find a campaign by purpose — also matches custom campaigns whose name contains the purpose key
 function findCampaign(campaigns, purpose) {
   return campaigns.find(c =>
