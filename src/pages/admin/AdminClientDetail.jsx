@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import AdminLayout from '../../components/AdminLayout'
 import {
   getClient, updateClient, deactivateClient, reactivateClient,
-  getSubscriptionStatus, PLANS
+  getSubscriptionStatus, toggleModule, PLANS
 } from '../../firebase/adminDb'
 
 const STATUS_STYLE = {
@@ -274,6 +274,42 @@ export default function AdminClientDetail() {
               </button>
             </div>
           </div>
+
+          {/* Add-on Modules */}
+          {(client.centreType === 'clinic' || client.centreType === 'both') && (
+            <div style={cardStyle}>
+              <div style={cardHead}>🧩 Add-on Modules</div>
+              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {[
+                  { key: 'vaccination', label: '💉 Vaccination Module', desc: 'Child profiles, vaccine schedules, parent WhatsApp reminders' },
+                ].map(mod => {
+                  const isOn = client.modules?.[mod.key] === true
+                  return (
+                    <div key={mod.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: isOn ? '#F0FDF4' : 'var(--bg)' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{mod.label}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{mod.desc}</div>
+                      </div>
+                      <button onClick={async () => {
+                        await toggleModule(id, mod.key, !isOn)
+                        await load()
+                        showToast(`${mod.label} ${!isOn ? 'enabled' : 'disabled'}`, 'success')
+                      }} style={{
+                        padding: '6px 16px', borderRadius: 20, border: '1.5px solid',
+                        borderColor: isOn ? '#16A34A' : 'var(--border)',
+                        background: isOn ? '#16A34A' : 'none',
+                        color: isOn ? '#fff' : 'var(--slate)',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'DM Sans, sans-serif', flexShrink: 0, marginLeft: 16
+                      }}>
+                        {isOn ? '● ON' : '○ OFF'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Danger zone */}
           {!isDeactivated && (

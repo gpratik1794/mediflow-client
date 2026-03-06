@@ -18,47 +18,65 @@ const DIAGNOSTIC_NAV = [
   { to: '/settings', label: 'Settings',        icon: '⚙' },
 ]
 
-const CLINIC_NAV = [
-  { section: 'Overview' },
-  { to: '/clinic',              label: 'Dashboard',       icon: '▦' },
-  { section: 'Patients' },
-  { to: '/clinic/appointments', label: 'Appointments',    icon: '📅' },
-  { to: '/clinic/patients',     label: 'Patients',        icon: '👥' },
-  { to: '/clinic/followups',    label: 'Follow-ups',      icon: '🔔' },
-  { section: 'Doctor' },
-  { to: '/clinic/prescription/new', label: 'New Prescription', icon: '💊' },
-  { section: 'Manage' },
-  { to: '/settings',            label: 'Settings',        icon: '⚙' },
-]
+function buildClinicNav(modules) {
+  const nav = [
+    { section: 'Overview' },
+    { to: '/clinic',              label: 'Dashboard',        icon: '▦' },
+    { section: 'Patients' },
+    { to: '/clinic/appointments', label: 'Appointments',     icon: '📅' },
+    { to: '/clinic/patients',     label: 'Patients',         icon: '👥' },
+    { to: '/clinic/followups',    label: 'Follow-ups',       icon: '🔔' },
+  ]
+  if (modules?.vaccination) {
+    nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
+  }
+  nav.push(
+    { section: 'Doctor' },
+    { to: '/clinic/prescription/new', label: 'New Prescription', icon: '💊' },
+    { section: 'Manage' },
+    { to: '/settings', label: 'Settings', icon: '⚙' }
+  )
+  return nav
+}
 
-const BOTH_NAV = [
-  { section: 'Clinic' },
-  { to: '/clinic',              label: 'Clinic Dashboard',    icon: '🩺' },
-  { to: '/clinic/appointments', label: 'Appointments',        icon: '📅' },
-  { to: '/clinic/followups',    label: 'Follow-ups',          icon: '🔔' },
-  { to: '/clinic/prescription/new', label: 'New Prescription', icon: '💊' },
-  { section: 'Diagnostic' },
-  { to: '/',                    label: 'Lab Dashboard',       icon: '▦' },
-  { to: '/visits',              label: "Today's Visits",      icon: '📋' },
-  { to: '/billing',             label: 'Billing',             icon: '₹' },
-  { to: '/reports',             label: 'Reports',             icon: '📄' },
-  { section: 'Manage' },
-  { to: '/patients',            label: 'Patients',            icon: '👥' },
-  { to: '/tests',               label: 'Test Catalogue',      icon: '🧪' },
-  { to: '/settings',            label: 'Settings',            icon: '⚙' },
-]
+function buildBothNav(modules) {
+  const nav = [
+    { section: 'Clinic' },
+    { to: '/clinic',              label: 'Clinic Dashboard',    icon: '🩺' },
+    { to: '/clinic/appointments', label: 'Appointments',        icon: '📅' },
+    { to: '/clinic/followups',    label: 'Follow-ups',          icon: '🔔' },
+    { to: '/clinic/prescription/new', label: 'New Prescription', icon: '💊' },
+  ]
+  if (modules?.vaccination) {
+    nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
+  }
+  nav.push(
+    { section: 'Diagnostic' },
+    { to: '/',       label: 'Lab Dashboard',  icon: '▦' },
+    { to: '/visits', label: "Today's Visits", icon: '📋' },
+    { to: '/billing', label: 'Billing',       icon: '₹' },
+    { to: '/reports', label: 'Reports',       icon: '📄' },
+    { section: 'Manage' },
+    { to: '/patients', label: 'Patients',     icon: '👥' },
+    { to: '/tests',    label: 'Test Catalogue', icon: '🧪' },
+    { to: '/settings', label: 'Settings',     icon: '⚙' }
+  )
+  return nav
+}
 
 export default function Sidebar() {
   const { profile } = useAuth()
   const navigate = useNavigate()
 
   const centreType = profile?.centreType || 'diagnostic'
-  const nav = centreType === 'clinic' ? CLINIC_NAV
-            : centreType === 'both'   ? BOTH_NAV
+  const modules    = profile?.modules || {}
+
+  const nav = centreType === 'clinic' ? buildClinicNav(modules)
+            : centreType === 'both'   ? buildBothNav(modules)
             : DIAGNOSTIC_NAV
 
-  const typeLabel = centreType === 'clinic'     ? 'Clinic'
-                  : centreType === 'both'        ? 'Clinic + Diagnostic'
+  const typeLabel = centreType === 'clinic' ? 'Clinic'
+                  : centreType === 'both'   ? 'Clinic + Diagnostic'
                   : 'Diagnostic Centre'
 
   async function handleLogout() {
@@ -75,17 +93,10 @@ export default function Sidebar() {
       {/* Logo */}
       <div style={{ padding: '0 24px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 36, height: 36, background: 'var(--teal)', borderRadius: 10,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18
-          }}>🏥</div>
+          <div style={{ width: 36, height: 36, background: 'var(--teal)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🏥</div>
           <div>
-            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 20, color: '#fff', letterSpacing: -0.3 }}>
-              MediFlow
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--teal)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 500 }}>
-              {typeLabel}
-            </div>
+            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 20, color: '#fff', letterSpacing: -0.3 }}>MediFlow</div>
+            <div style={{ fontSize: 10, color: 'var(--teal)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 500 }}>{typeLabel}</div>
           </div>
         </div>
       </div>
@@ -94,10 +105,7 @@ export default function Sidebar() {
       <nav style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
         {nav.map((item, i) => {
           if (item.section) return (
-            <div key={i} style={{
-              fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
-              color: 'rgba(255,255,255,0.3)', padding: '12px 12px 4px', fontWeight: 500
-            }}>{item.section}</div>
+            <div key={i} style={{ fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 12px 4px', fontWeight: 500 }}>{item.section}</div>
           )
           return (
             <NavLink key={item.to} to={item.to}
@@ -120,36 +128,19 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div style={{ padding: '16px 12px 0', borderTop: '1px solid rgba(255,255,255,0.08)', margin: '0 12px' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 12px', background: 'rgba(255,255,255,0.06)', borderRadius: 10, marginBottom: 8
-        }}>
-          <div style={{
-            width: 32, height: 32, background: 'var(--teal)', borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0
-          }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.06)', borderRadius: 10, marginBottom: 8 }}>
+          <div style={{ width: 32, height: 32, background: 'var(--teal)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>
             {(profile?.centreName || 'M').slice(0, 2).toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {profile?.centreName || 'My Centre'}
-            </div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-              {profile?.city || ''}
-            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.centreName || 'My Centre'}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{profile?.city || ''}</div>
           </div>
         </div>
-        <button onClick={handleLogout} style={{
-          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-          color: 'rgba(255,255,255,0.4)', fontSize: 12, padding: '8px 12px',
-          textAlign: 'left', borderRadius: 8, transition: 'color 0.18s', fontFamily: 'DM Sans, sans-serif'
-        }}
+        <button onClick={handleLogout} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: 12, padding: '8px 12px', textAlign: 'left', borderRadius: 8, transition: 'color 0.18s', fontFamily: 'DM Sans, sans-serif' }}
           onMouseEnter={e => e.target.style.color = 'rgba(255,255,255,0.8)'}
           onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,0.4)'}
-        >
-          ⏻ Sign Out
-        </button>
+        >⏻ Sign Out</button>
       </div>
     </aside>
   )

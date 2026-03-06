@@ -108,3 +108,24 @@ export function isAccountAccessible(client) {
   const status = getSubscriptionStatus(client)
   return ['active', 'trial'].includes(status)
 }
+
+// ── MODULE TOGGLES ────────────────────────────────────────────────────────────
+
+/**
+ * Toggle an add-on module for a client.
+ * Writes to both clients/{centreId} (admin record) and
+ * centres/{centreId}/profile/main (read by AuthContext on login).
+ */
+export async function toggleModule(centreId, moduleName, enabled) {
+  // Update admin client record
+  await updateDoc(doc(db, 'clients', centreId), {
+    [`modules.${moduleName}`]: enabled,
+    updatedAt: serverTimestamp()
+  })
+  // Update centre profile so AuthContext picks it up
+  await setDoc(
+    doc(db, 'centres', centreId, 'profile', 'main'),
+    { modules: { [moduleName]: enabled } },
+    { merge: true }
+  )
+}

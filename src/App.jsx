@@ -19,6 +19,8 @@ import Settings    from './pages/Settings'
 // Clinic pages
 import ClinicDashboard    from './pages/clinic/ClinicDashboard'
 import ClinicPatients     from './pages/clinic/ClinicPatients'
+import Vaccination        from './pages/clinic/Vaccination'
+import VaccinationDetail  from './pages/clinic/VaccinationDetail'
 import Appointments       from './pages/clinic/Appointments'
 import NewAppointment     from './pages/clinic/NewAppointment'
 import AppointmentDetail  from './pages/clinic/AppointmentDetail'
@@ -69,6 +71,8 @@ function AppRoutes() {
       {/* Clinic routes */}
       <Route path="/clinic"                       element={<Protected><ClinicDashboard /></Protected>} />
       <Route path="/clinic/patients"              element={<Protected><ClinicPatients /></Protected>} />
+      <Route path="/clinic/vaccination"           element={<Protected><Vaccination /></Protected>} />
+      <Route path="/clinic/vaccination/:id"       element={<Protected><VaccinationDetail /></Protected>} />
       <Route path="/clinic/appointments"          element={<Protected><Appointments /></Protected>} />
       <Route path="/clinic/appointments/new"      element={<Protected><NewAppointment /></Protected>} />
       <Route path="/clinic/appointments/:id"      element={<Protected><AppointmentDetail /></Protected>} />
