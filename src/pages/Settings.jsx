@@ -422,6 +422,7 @@ export default function Settings() {
     whatsappCampaigns: [],
     aisynergyApiKey: '',
     lateCheckinPenalty: '0',
+    weeklyOff: [],
     vaccinationReminderDays: '7,3,1',
   })
 
@@ -443,6 +444,7 @@ export default function Settings() {
         whatsappCampaigns: profile.whatsappCampaigns || [],
         aisynergyApiKey:    profile.aisynergyApiKey    || '',
         lateCheckinPenalty: profile.lateCheckinPenalty || '0',
+        weeklyOff:           profile.weeklyOff          || [],
         vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
       }))
     }
@@ -467,7 +469,7 @@ export default function Settings() {
   }
 
   function handleSaveCentreInfo()          { saveFields({ centreName: form.centreName, ownerName: form.ownerName, phone: form.phone, city: form.city, address: form.address }) }
-  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, clinicStart: form.clinicStart, clinicEnd: form.clinicEnd, lateCheckinPenalty: form.lateCheckinPenalty }) }
+  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, clinicStart: form.clinicStart, clinicEnd: form.clinicEnd, lateCheckinPenalty: form.lateCheckinPenalty, weeklyOff: form.weeklyOff }) }
   function handleSaveBilling()             { saveFields({ gst: form.gst, gstNumber: form.gstNumber }) }
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
 
@@ -546,6 +548,48 @@ export default function Settings() {
               If a patient misses their slot and checks in late, this controls how many patients must go before them.
               For example, set to 3: if patient #4 was skipped and #5,#6,#7 have gone in, patient #4 checks in and goes after #10 (current+3).
               Set to 0 to let late patients go next in line immediately.
+            </div>
+
+            {/* Weekly Off */}
+            <div>
+              <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                Weekly Off Days
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
+                  const isOff = (form.weeklyOff || []).includes(idx)
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => {
+                        const current = form.weeklyOff || []
+                        const updated = isOff ? current.filter(d => d !== idx) : [...current, idx]
+                        setForm(f => ({ ...f, weeklyOff: updated }))
+                      }}
+                      style={{
+                        padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                        fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                        border: `1.5px solid ${isOff ? 'var(--red, #DC2626)' : 'var(--border)'}`,
+                        background: isOff ? '#FEF2F2' : 'var(--surface)',
+                        color: isOff ? '#DC2626' : 'var(--slate)',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {day}
+                    </button>
+                  )
+                })}
+              </div>
+              {(form.weeklyOff || []).length > 0 ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#DC2626', fontWeight: 500 }}>
+                  🚫 Closed on: {(form.weeklyOff || []).sort((a,b)=>a-b).map(d => ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d]).join(', ')} — no appointments can be booked on these days
+                </div>
+              ) : (
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+                  No weekly off set — clinic is open all 7 days
+                </div>
+              )}
             </div>
             <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
               {saving ? 'Saving…' : '💾 Save Clinic Settings'}
