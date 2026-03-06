@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   doc, getDoc, collection, query, where, getDocs,
-  addDoc, setDoc, serverTimestamp
+  addDoc, updateDoc, runTransaction, serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { sendCampaign } from '../../firebase/whatsapp'
@@ -231,10 +231,10 @@ export default function BookAppointment() {
         const q = query(
           collection(db, 'centres', centreId, 'appointments'),
           where('date', '==', dateStr),
-          where('status', 'in', ['confirmed', 'checked_in', 'pending'])
+          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
         )
         const snap = await getDocs(q)
-        const taken = snap.docs.map(d => d.data().slot).filter(Boolean)
+        const taken = snap.docs.map(d => d.data().appointmentTime).filter(Boolean)
         setBookedSlots(taken)
       } catch (e) {
         console.error('fetchBooked:', e)
@@ -288,61 +288,122 @@ export default function BookAppointment() {
     if (submitting) return
     setSubmitting(true)
     try {
-      const dateStr = selDate.toISOString().split('T')[0]
-      const fullPhone = '91' + phone.trim()
+      const dateStr     = selDate.toISOString().split('T')[0]
+      const fullPhone   = '91' + phone.trim()
+      const docName     = selDoc?.name || selDoc || ''
+      const centreName  = centre?.centreName || 'Clinic'
+      const dateLabel   = DAYS_FULL[selDate.getDay()] + ', ' + selDate.getDate() + ' ' + MONTHS[selDate.getMonth()] + ' ' + selDate.getFullYear()
 
-      // 1. Find or create patient
+      // ── 1. Upsert patient ──
       let patientId = null
-      const pq = query(collection(db, 'centres', centreId, 'patients'), where('phone', '==', phone.trim()))
+      const pq    = query(collection(db, 'centres', centreId, 'patients'), where('phone', '==', phone.trim()))
       const pSnap = await getDocs(pq)
       if (!pSnap.empty) {
         patientId = pSnap.docs[0].id
+        // update last visit
+        await updateDoc(doc(db, 'centres', centreId, 'patients', patientId), {
+          name: name.trim(), age: age || '', gender: gender || '',
+          lastClinicVisit: dateStr
+        })
       } else {
         const newPat = await addDoc(collection(db, 'centres', centreId, 'patients'), {
           name: name.trim(), phone: phone.trim(), age: age || '', gender: gender || '',
-          createdAt: serverTimestamp(), source: 'online_booking'
+          source: 'online_booking', lastClinicVisit: dateStr,
+          createdAt: serverTimestamp()
         })
         patientId = newPat.id
       }
 
-      // 2. Save appointment
-      const apptRef = await addDoc(collection(db, 'centres', centreId, 'appointments'), {
-        patientId, patientName: name.trim(), phone: phone.trim(),
-        doctorName: selDoc?.name || selDoc || '',
-        date: dateStr, slot: selSlot, session: selSession,
-        status: 'confirmed', source: 'online_booking',
-        createdAt: serverTimestamp(),
-      })
-      setApptId(apptRef.id)
+      // ── 2. Transaction: check slot + get token + write appointment atomically ──
+      // Prevents two patients booking the same slot simultaneously
+      let apptId = null
+      let tokenNumber = null
 
-      // 3. Try appt_confirm campaign first
+      await runTransaction(db, async (tx) => {
+        // Fetch all appointments for this date
+        const apptSnap = await getDocs(
+          query(collection(db, 'centres', centreId, 'appointments'),
+            where('date', '==', dateStr),
+            where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
+          )
+        )
+
+        // Check for slot conflict
+        const conflict = apptSnap.docs.find(d => d.data().appointmentTime === selSlot)
+        if (conflict) throw new Error('SLOT_TAKEN')
+
+        // Calculate next token
+        const tokens = apptSnap.docs
+          .filter(d => d.data().status !== 'cancelled')
+          .map(d => d.data().tokenNumber || 0)
+        tokenNumber = tokens.length > 0 ? Math.max(...tokens) + 1 : 1
+
+        // Write appointment with all fields matching dashboard expectations
+        const newApptRef = doc(collection(db, 'centres', centreId, 'appointments'))
+        apptId = newApptRef.id
+        tx.set(newApptRef, {
+          // Dashboard-required fields
+          patientName:     name.trim(),
+          phone:           phone.trim(),
+          age:             age || '',
+          gender:          gender || '',
+          appointmentTime: selSlot,       // matches dashboard field name
+          visitType:       'New Visit',
+          tokenNumber,
+          status:          'scheduled',   // matches dashboard statuses
+          date:            dateStr,
+          // Extra context
+          patientId,
+          doctorName:      docName,
+          session:         selSession,
+          source:          'online_booking',
+          createdAt:       serverTimestamp(),
+        })
+      })
+
+      // ── 3. WhatsApp confirmation ──
       const campaigns = centre?.whatsappCampaigns || []
       const confirmCampaign = campaigns.find(c => c.purpose === 'appt_confirm' && c.enabled !== false)
 
-      const dateLabel = DAYS_FULL[selDate.getDay()] + ', ' + selDate.getDate() + ' ' + MONTHS[selDate.getMonth()] + ' ' + selDate.getFullYear()
-      const docName = selDoc?.name || selDoc || 'Doctor'
-      const centreName = centre?.centreName || 'Clinic'
-
       if (confirmCampaign) {
-        // Send via configured campaign
-        await sendCampaign(campaigns, 'appt_confirm', fullPhone, [name.trim(), dateLabel, selSlot, docName, centreName])
+        // Match param order from NewAppointment.jsx:
+        // {{1}} patientName, {{2}} doctorName, {{3}} date, {{4}} appointmentTime
+        await sendCampaign(campaigns, 'appt_confirm', fullPhone,
+          [name.trim(), docName || centreName, dateStr, selSlot],
+          null, { centreId, patientName: name.trim(), apptId }
+        )
       } else {
-        // Fallback: plain text to patient + notify number
-        const msg = `Hi ${name.trim()}, your appointment at ${centreName} has been confirmed.\n\nDate: ${dateLabel}\nTime: ${selSlot}\nDoctor: ${docName}\n\nPlease arrive 5 mins early. See you soon!`
+        // Fallback: plain text WA to patient + admin notify
         const apiKey = centre?.aisynergyApiKey
         if (apiKey) {
+          const msg = `Hi ${name.trim()}, your appointment at ${centreName} is confirmed.\n\nDate: ${dateLabel}\nTime: ${selSlot}${docName ? '\nDoctor: ' + docName : ''}\n\nPlease arrive 5 mins early!`
           await sendPlainWA(apiKey, fullPhone, msg)
-          // Notify admin
-          const adminMsg = `🔔 New Appointment Booking\nClinic: ${centreName}\nPatient: ${name.trim()} (+91 ${phone})\nDate: ${dateLabel}\nTime: ${selSlot}\nDoctor: ${docName}`
+          const adminMsg = `🔔 New Online Booking\nClinic: ${centreName}\nPatient: ${name.trim()} (+91${phone})\nDate: ${dateLabel}\nTime: ${selSlot}${docName ? '\nDoctor: ' + docName : ''}\nToken: #${tokenNumber}`
           await sendPlainWA(apiKey, FALLBACK_NOTIFY_NUMBER, adminMsg)
         }
       }
 
+      setApptId(apptId)
       setDone(true)
       window.scrollTo(0, 0)
+
     } catch (e) {
-      console.error('Booking failed:', e)
-      alert('Something went wrong. Please try again.')
+      if (e.message === 'SLOT_TAKEN') {
+        alert('Sorry! This slot was just booked by someone else. Please go back and choose another slot.')
+        // Refresh booked slots so UI reflects reality
+        const dateStr = selDate.toISOString().split('T')[0]
+        const snap = await getDocs(query(
+          collection(db, 'centres', centreId, 'appointments'),
+          where('date', '==', dateStr),
+          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
+        ))
+        setBookedSlots(snap.docs.map(d => d.data().appointmentTime).filter(Boolean))
+        setSelSlot(null)
+        setStep(4)
+      } else {
+        console.error('Booking failed:', e)
+        alert('Something went wrong. Please try again.')
+      }
     }
     setSubmitting(false)
   }

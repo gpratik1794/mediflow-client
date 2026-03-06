@@ -404,7 +404,7 @@ function CampaignTester({ campaigns, purpose, phone, centreName }) {
 
 function DoctorsManager({ doctors, onChange }) {
   const [adding, setAdding] = useState(false)
-  const [draft, setDraft]   = useState({ name: '', degree: '', speciality: '' })
+  const [draft, setDraft]   = useState({ name: '', degree: '', speciality: '', phone: '' })
   const [err, setErr]       = useState('')
 
   const iStyle = { width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)', outline: 'none' }
@@ -412,7 +412,7 @@ function DoctorsManager({ doctors, onChange }) {
 
   function handleAdd() {
     if (!draft.name.trim()) { setErr('Doctor name is required'); return }
-    onChange([...doctors, { name: draft.name.trim(), degree: draft.degree.trim(), speciality: draft.speciality.trim() }])
+    onChange([...doctors, { name: draft.name.trim(), degree: draft.degree.trim(), speciality: draft.speciality.trim(), phone: draft.phone.trim() }])
     setDraft({ name: '', degree: '', speciality: '' })
     setAdding(false); setErr('')
   }
@@ -462,6 +462,10 @@ function DoctorsManager({ doctors, onChange }) {
               <span style={lStyle}>Speciality</span>
               <input style={iStyle} value={draft.speciality} onChange={e => setDraft(d => ({ ...d, speciality: e.target.value }))} placeholder="e.g. General Physician" />
             </div>
+          </div>
+          <div>
+            <span style={lStyle}>WhatsApp Number (for schedule notifications)</span>
+            <input style={iStyle} value={draft.phone} onChange={e => setDraft(d => ({ ...d, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))} placeholder="10-digit mobile number" maxLength={10} />
           </div>
           {err && <div style={{ fontSize: 12, color: '#DC2626' }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8 }}>

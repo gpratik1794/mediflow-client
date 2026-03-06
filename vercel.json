@@ -4,5 +4,11 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/doctor-schedule",
+      "schedule": "30 15 * * *"
+    }
   ]
 }
