@@ -7,7 +7,6 @@ import { Card, CardHeader, Btn, Input, Toast, Empty } from '../../components/UI'
 import { getDoc, doc, collection, query, where, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { updateAppointment, getPrescriptions, getAppointments, VITALS_FIELDS } from '../../firebase/clinicDb'
-import { sendCampaign } from '../../firebase/whatsapp'
 import WhatsAppLog from '../../components/WhatsAppLog'
 import { format } from 'date-fns'
 

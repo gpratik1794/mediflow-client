@@ -7,6 +7,7 @@ import Layout from '../components/Layout'
 import { Card, CardHeader, Badge, Btn, Toast } from '../components/UI'
 import { getVisit, updateVisit } from '../firebase/db'
 import { getPrescriptions } from '../firebase/clinicDb'
+import { sendCampaign, uploadPdfForWhatsApp } from '../firebase/whatsapp'
 import WhatsAppLog from '../components/WhatsAppLog'
 import { format } from 'date-fns'
 
