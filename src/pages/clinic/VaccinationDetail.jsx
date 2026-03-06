@@ -101,10 +101,12 @@ export default function VaccinationDetail() {
         }
       }
 
-      // Schedule reminders for next vaccine
+      // Schedule reminders (non-blocking — won't fail the save)
       if (nextVaccine && updatedChild) {
-        const reminderDays = (profile?.vaccinationReminderDays || '7,3,1').split(',').map(Number).filter(Boolean)
-        await scheduleVaccinationReminders(user.uid, id, updatedChild, nextVaccine, reminderDays)
+        try {
+          const reminderDays = (profile?.vaccinationReminderDays || '7,3,1').split(',').map(Number).filter(Boolean)
+          await scheduleVaccinationReminders(user.uid, id, updatedChild, nextVaccine, reminderDays)
+        } catch (e) { console.warn('Reminder scheduling skipped:', e) }
       }
 
       await load()
@@ -306,7 +308,13 @@ export default function VaccinationDetail() {
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>💉 Mark as Given</div>
             <div style={{ fontSize: 13, color: 'var(--teal)', marginBottom: 20 }}>{markModal.vaccine.name}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div><label style={lStyle}>Date Given *</label><input type="date" value={markForm.givenDate} max={today} onChange={e => setMarkForm(f => ({ ...f, givenDate: e.target.value }))} style={iStyle} /></div>
+              <div><label style={lStyle}>Date Given *</label>
+                <div style={{ position: 'relative' }} onClick={e => e.currentTarget.querySelector('input').showPicker?.()}>
+                  <input type="date" value={markForm.givenDate} max={today}
+                    onChange={e => setMarkForm(f => ({ ...f, givenDate: e.target.value }))}
+                    style={{ ...iStyle, cursor: 'pointer', colorScheme: 'light' }} />
+                </div>
+              </div>
               <div><label style={lStyle}>Batch Number (optional)</label><input value={markForm.batchNo} onChange={e => setMarkForm(f => ({ ...f, batchNo: e.target.value }))} placeholder="e.g. BX2024001" style={iStyle} /></div>
               <div><label style={lStyle}>Given By (optional)</label><input value={markForm.givenBy} onChange={e => setMarkForm(f => ({ ...f, givenBy: e.target.value }))} placeholder="e.g. Dr. Mehta" style={iStyle} /></div>
               <div><label style={lStyle}>Notes (optional)</label><input value={markForm.notes} onChange={e => setMarkForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any reaction, site, remarks" style={iStyle} /></div>
