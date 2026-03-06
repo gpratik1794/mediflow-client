@@ -244,6 +244,8 @@ export default function BookAppointment() {
       setSlotsLoading(true)
       try {
         const dateStr = toLocalDateStr(selDate)
+        const q = query(
+          collection(db, 'centres', centreId, 'appointments'),
           where('date', '==', dateStr),
           where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
         )
@@ -406,6 +408,7 @@ export default function BookAppointment() {
         alert('Sorry! This slot was just booked by someone else. Please go back and choose another slot.')
         // Refresh booked slots so UI reflects reality
         const dateStr = toLocalDateStr(selDate)
+        const snap = await getDocs(query(
           collection(db, 'centres', centreId, 'appointments'),
           where('date', '==', dateStr),
           where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
