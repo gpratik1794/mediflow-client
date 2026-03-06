@@ -402,6 +402,7 @@ export default function VisitDetail() {
             <WhatsAppLog key={waLogKey} centreId={user?.uid} visitId={id} />
           </Card>
         </div>
+      </div>
 
       {/* PRINT TEMPLATE — off-screen, NOT display:none (breaks print) */}
       <div ref={printRef} style={{ position: 'absolute', left: '-9999px', top: 0 }}>
