@@ -34,7 +34,9 @@ export default function Reports() {
     }
     const result = await sendCampaign(
       profile.whatsappCampaigns, 'report_ready', v.phone,
-      [v.patientName, profile.centreName]
+      [v.patientName, profile.centreName],
+      null,
+      { centreId: user.uid, patientName: v.patientName, visitId: v.id }
     )
     setToast({ message: result.ok ? `Report sent to ${v.patientName}` : `WhatsApp failed: ${result.error}`, type: result.ok ? 'success' : 'error' })
   }
@@ -45,7 +47,10 @@ export default function Reports() {
     }
     let sent = 0
     for (const v of visits) {
-      const result = await sendCampaign(profile.whatsappCampaigns, 'report_ready', v.phone, [v.patientName, profile.centreName])
+      const result = await sendCampaign(
+        profile.whatsappCampaigns, 'report_ready', v.phone, [v.patientName, profile.centreName],
+        null, { centreId: user.uid, patientName: v.patientName, visitId: v.id }
+      )
       if (result.ok) sent++
     }
     setToast({ message: `Sent ${sent} of ${visits.length} reports`, type: 'success' })

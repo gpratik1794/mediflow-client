@@ -125,7 +125,9 @@ export default function NewVisit() {
       if (profile?.whatsappCampaigns?.length) {
         sendCampaign(
           profile.whatsappCampaigns, 'bill_generated', patient.phone,
-          [patient.name, profile.centreName || 'the centre', String(totalAmount)]
+          [patient.name, profile.centreName || 'the centre', String(totalAmount)],
+          null,
+          { centreId: user.uid, patientName: patient.name, visitId }
         )
       }
 
