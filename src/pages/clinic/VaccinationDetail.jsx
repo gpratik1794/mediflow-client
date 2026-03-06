@@ -43,6 +43,7 @@ export default function VaccinationDetail() {
   const [markModal,  setMarkModal]  = useState(null)
   const [markForm,   setMarkForm]   = useState({ givenDate: new Date().toISOString().split('T')[0], batchNo: '', notes: '', givenBy: '' })
   const [activeTab,  setActiveTab]  = useState('schedule')
+  const [waParams,   setWaParams]   = useState([]) // editable WhatsApp params
 
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({ childName: '', dob: '', gender: '', guardianName: '', motherPhone: '', fatherPhone: '', bloodGroup: '', notes: '' })
@@ -97,7 +98,7 @@ export default function VaccinationDetail() {
           ? `${nextVaccine.name} on ${formatDate(getDueDate(child.dob, nextVaccine.atMonths))}`
           : 'All vaccines completed!'
         for (const phone of phones) {
-          await sendWhatsApp(apiKey, phone, campaign.name, [child?.childName || 'your child', markModal.vaccine.name, markForm.givenDate, nextInfo, profile?.centreName || 'Clinic'])
+          await sendWhatsApp(apiKey, phone, campaign.name, waParams.length ? waParams : [child?.childName || 'your child', markModal.vaccine.name, markForm.givenDate, nextInfo, profile?.centreName || 'Clinic'])
         }
       }
 
@@ -262,7 +263,18 @@ export default function VaccinationDetail() {
                               {isDone ? (
                                 <button onClick={() => handleUnmark(vaccine.id)} style={{ fontSize: 11, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 6 }}>✕ Undo</button>
                               ) : (
-                                <button onClick={() => { setMarkModal({ vaccine }); setMarkForm({ givenDate: today, batchNo: '', notes: '', givenBy: '' }) }} style={{ fontSize: 12, color: 'var(--teal)', background: 'var(--teal-light)', border: '1px solid var(--teal)', borderRadius: 8, padding: '5px 14px', cursor: 'pointer', fontWeight: 600, fontFamily: 'DM Sans, sans-serif' }}>Mark Given</button>
+                                <button onClick={() => {
+                                setMarkModal({ vaccine })
+                                setMarkForm({ givenDate: today, batchNo: '', notes: '', givenBy: '' })
+                                const nextV = DEFAULT_VACCINE_SCHEDULE.find(v2 => v2.id !== vaccine.id && !(given[v2.id]?.givenDate))
+                                setWaParams([
+                                  child?.childName || '',
+                                  vaccine.name,
+                                  today,
+                                  nextV && child?.dob ? `${nextV.name} on ${formatDate(getDueDate(child.dob, nextV.atMonths))}` : 'All vaccines completed!',
+                                  profile?.centreName || ''
+                                ])
+                              }} style={{ fontSize: 12, color: 'var(--teal)', background: 'var(--teal-light)', border: '1px solid var(--teal)', borderRadius: 8, padding: '5px 14px', cursor: 'pointer', fontWeight: 600, fontFamily: 'DM Sans, sans-serif' }}>Mark Given</button>
                               )}
                             </div>
                           )
@@ -319,7 +331,24 @@ export default function VaccinationDetail() {
               <div><label style={lStyle}>Given By (optional)</label><input value={markForm.givenBy} onChange={e => setMarkForm(f => ({ ...f, givenBy: e.target.value }))} placeholder="e.g. Dr. Mehta" style={iStyle} /></div>
               <div><label style={lStyle}>Notes (optional)</label><input value={markForm.notes} onChange={e => setMarkForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any reaction, site, remarks" style={iStyle} /></div>
             </div>
-            {hasVaccineGivenCampaign && <div style={{ marginTop: 14, padding: '8px 12px', background: '#F0FDF4', borderRadius: 8, fontSize: 11, color: '#15803D' }}>📱 WhatsApp confirmation will be sent to parents</div>}
+            {hasVaccineGivenCampaign && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>📱 WhatsApp Message Preview</div>
+                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {['Child Name', 'Vaccine Name', 'Date Given', 'Next Vaccine Info', 'Centre Name'].map((label, i) => (
+                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <label style={{ fontSize: 10, color: '#15803D', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>Param {i+1}: {label}</label>
+                      <input
+                        value={waParams[i] || ''}
+                        onChange={e => setWaParams(p => { const n=[...p]; n[i]=e.target.value; return n })}
+                        style={{ ...iStyle, fontSize: 12, padding: '6px 10px', background: '#fff', border: '1px solid #BBF7D0' }}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 10, color: '#15803D', marginTop: 2 }}>✎ You can edit any param before sending</div>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
               <Btn onClick={handleMarkGiven} disabled={saving} style={{ flex: 1, justifyContent: 'center' }}>{saving ? 'Saving…' : '✓ Confirm'}</Btn>
               <Btn variant="ghost" onClick={() => setMarkModal(null)} style={{ flex: 1, justifyContent: 'center' }}>Cancel</Btn>
