@@ -135,7 +135,7 @@ function CampaignAdder({ onAdd }) {
             Paste full cURL from AiSynergy → Campaigns → your campaign → API
           </label>
           <textarea value={curl} onChange={e => handleCurlChange(e.target.value)}
-            placeholder={'curl -X POST -H "Content-Type: application/json" -d '{"apiKey":"...","campaignName":"...",...}' https://backend.api-wa.co/campaign/aisynergy/api/v2'}
+            placeholder={`curl -X POST -H "Content-Type: application/json" -d '{"apiKey":"...","campaignName":"...",...}' https://backend.api-wa.co/campaign/aisynergy/api/v2`}
             style={{ width: '100%', minHeight: 110, padding: '10px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 11, fontFamily: 'monospace', background: '#fff', resize: 'vertical', lineHeight: 1.6, boxSizing: 'border-box' }} />
         </div>
       )}
