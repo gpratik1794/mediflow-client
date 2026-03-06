@@ -4,86 +4,90 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Input, Toast, Empty } from '../../components/UI'
-import { getDoc, doc, collection, query, where, orderBy, getDocs } from 'firebase/firestore'
+import { getDoc, doc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 import { updateAppointment, getPrescriptions, getAppointments, VITALS_FIELDS } from '../../firebase/clinicDb'
 import { format } from 'date-fns'
 
 const STATUS_FLOW = ['scheduled', 'waiting', 'in-consultation', 'done']
 const STATUS_LABELS = {
-  scheduled: 'Scheduled', waiting: 'Waiting', 'in-consultation': 'In Consultation', done: 'Done', cancelled: 'Cancelled'
+  scheduled: 'Scheduled', waiting: 'Waiting',
+  'in-consultation': 'In Consultation', done: 'Done', cancelled: 'Cancelled'
 }
 const STATUS_COLORS = {
-  scheduled: { bg: 'var(--border)', color: 'var(--slate)' },
-  waiting:   { bg: 'var(--amber-bg)', color: 'var(--amber)' },
-  'in-consultation': { bg: 'var(--teal-light)', color: 'var(--teal)' },
-  done:      { bg: 'var(--green-bg)', color: 'var(--green)' },
-  cancelled: { bg: 'var(--red-bg)', color: 'var(--red)' },
+  scheduled:         { bg: 'var(--border)',     color: 'var(--slate)' },
+  waiting:           { bg: 'var(--amber-bg)',   color: 'var(--amber)' },
+  'in-consultation': { bg: 'var(--teal-light)', color: 'var(--teal)'  },
+  done:              { bg: 'var(--green-bg)',   color: 'var(--green)' },
+  cancelled:         { bg: 'var(--red-bg)',     color: 'var(--red)'   },
 }
 
 export default function AppointmentDetail() {
   const { id } = useParams()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()   // ← FIXED: profile was missing, crashed handleStatusUpdate
   const navigate = useNavigate()
-  const [appt, setAppt]         = useState(null)
+  const [appt, setAppt]           = useState(null)
   const [prescriptions, setPresc] = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [toast, setToast]       = useState(null)
-  const [vitals, setVitals]     = useState({})
-  const [notes, setNotes]       = useState('')
+  const [loading, setLoading]     = useState(true)
+  const [toast, setToast]         = useState(null)
+  const [vitals, setVitals]       = useState({})
+  const [notes, setNotes]         = useState('')
   const [savingVitals, setSavingVitals] = useState(false)
 
   useEffect(() => { if (user && id) loadData() }, [id, user])
 
   async function loadData() {
     setLoading(true)
-    const snap = await getDoc(doc(db, 'centres', user.uid, 'appointments', id))
-    if (snap.exists()) {
-      const data = { id: snap.id, ...snap.data() }
-      setAppt(data)
-      setVitals(data.vitals || {})
-      setNotes(data.clinicalNotes || '')
-      // Load prescriptions for this patient
-      const presc = await getPrescriptions(user.uid, data.phone)
-      setPresc(presc)
+    try {
+      const snap = await getDoc(doc(db, 'centres', user.uid, 'appointments', id))
+      if (snap.exists()) {
+        const data = { id: snap.id, ...snap.data() }
+        setAppt(data)
+        setVitals(data.vitals || {})
+        setNotes(data.clinicalNotes || '')
+        // FIXED: wrapped in try/catch — a Firestore query error no longer hangs the page
+        try {
+          const presc = await getPrescriptions(user.uid, data.phone)
+          setPresc(presc)
+        } catch (e) {
+          console.warn('Could not load prescriptions:', e)
+          setPresc([])
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load appointment:', e)
     }
-    setLoading(false)
+    setLoading(false)  // FIXED: always runs, even if appointment not found
   }
 
   async function handleStatusUpdate(newStatus) {
-    // Late check-in penalty logic:
-    // If this patient was skipped (status=scheduled, but patients after them have already
-    // gone in-consultation or done), apply the penalty from profile settings.
+    // FIXED: cancel requires confirmation popup
+    if (newStatus === 'cancelled') {
+      const ok = window.confirm(
+        `Cancel appointment for ${appt.patientName}?\n\nThis cannot be undone.`
+      )
+      if (!ok) return
+    }
+
     if (newStatus === 'waiting' && appt.status === 'scheduled') {
       const penalty = parseInt(profile?.lateCheckinPenalty || '0')
       if (penalty > 0) {
-        // Count how many patients with higher token numbers have been called in or done today
         const allToday = await getAppointments(user.uid, appt.date)
         const skippedPast = allToday.filter(a =>
           a.id !== appt.id &&
           a.tokenNumber > appt.tokenNumber &&
           (a.status === 'in-consultation' || a.status === 'done')
         ).length
-
         if (skippedPast > 0) {
-          // Patient is late — find current last token and push them back by penalty count
-          const activeTokens = allToday
-            .filter(a => a.status !== 'cancelled')
-            .map(a => a.tokenNumber)
+          const activeTokens = allToday.filter(a => a.status !== 'cancelled').map(a => a.tokenNumber)
           const maxToken = Math.max(...activeTokens)
           const newPosition = maxToken + penalty
-
           await updateAppointment(user.uid, id, {
-            status: 'waiting',
-            tokenNumber: newPosition,
-            lateCheckin: true,
-            originalToken: appt.tokenNumber
+            status: 'waiting', tokenNumber: newPosition,
+            lateCheckin: true, originalToken: appt.tokenNumber
           })
           setAppt(a => ({ ...a, status: 'waiting', tokenNumber: newPosition, lateCheckin: true }))
-          setToast({
-            message: `Late check-in: token reassigned to #${newPosition} (${penalty} patient wait penalty)`,
-            type: 'info'
-          })
+          setToast({ message: `Late check-in: token reassigned to #${newPosition} (${penalty} patient penalty)`, type: 'info' })
           return
         }
       }
@@ -135,10 +139,13 @@ export default function AppointmentDetail() {
                   <React.Fragment key={s}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                       <div style={{
-                        width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 13, fontWeight: 600, cursor: i === currentIdx + 1 ? 'pointer' : 'default',
+                        width: 36, height: 36, borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 13, fontWeight: 600,
+                        cursor: i === currentIdx + 1 ? 'pointer' : 'default',
                         background: i <= currentIdx ? 'var(--teal)' : 'var(--border)',
-                        color: i <= currentIdx ? '#fff' : 'var(--muted)', transition: 'all 0.2s'
+                        color: i <= currentIdx ? '#fff' : 'var(--muted)',
+                        transition: 'all 0.2s'
                       }} onClick={() => i === currentIdx + 1 && handleStatusUpdate(s)}>
                         {i < currentIdx ? '✓' : i + 1}
                       </div>
@@ -154,14 +161,14 @@ export default function AppointmentDetail() {
               </div>
 
               <div style={{ display: 'flex', gap: 10 }}>
-                {currentIdx < STATUS_FLOW.length - 1 && (
+                {appt.status !== 'cancelled' && appt.status !== 'done' && currentIdx < STATUS_FLOW.length - 1 && (
                   <Btn onClick={() => handleStatusUpdate(STATUS_FLOW[currentIdx + 1])} style={{ flex: 1, justifyContent: 'center' }}>
                     → Move to {STATUS_LABELS[STATUS_FLOW[currentIdx + 1]]}
                   </Btn>
                 )}
                 {appt.status !== 'cancelled' && appt.status !== 'done' && (
                   <Btn variant="danger" onClick={() => handleStatusUpdate('cancelled')} style={{ justifyContent: 'center' }}>
-                    Cancel
+                    ✕ Cancel Appointment
                   </Btn>
                 )}
               </div>
@@ -178,9 +185,11 @@ export default function AppointmentDetail() {
                     <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, display: 'block', marginBottom: 5 }}>
                       {f.label} <span style={{ color: 'var(--teal)' }}>({f.unit})</span>
                     </label>
-                    <input value={vitals[f.key] || ''} onChange={e => setVitals(v => ({ ...v, [f.key]: e.target.value }))}
+                    <input
+                      value={vitals[f.key] || ''}
+                      onChange={e => setVitals(v => ({ ...v, [f.key]: e.target.value }))}
                       placeholder={f.placeholder}
-                      style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', transition: 'border 0.18s' }}
+                      style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)' }}
                       onFocus={e => e.target.style.borderColor = 'var(--teal)'}
                       onBlur={e => e.target.style.borderColor = 'var(--border)'}
                     />
@@ -189,9 +198,12 @@ export default function AppointmentDetail() {
               </div>
               <div style={{ marginBottom: 14 }}>
                 <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, display: 'block', marginBottom: 5 }}>Clinical Notes</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
                   placeholder="Chief complaint, examination findings, diagnosis…"
-                  rows={3} style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', resize: 'vertical', transition: 'border 0.18s' }}
+                  rows={3}
+                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', resize: 'vertical' }}
                   onFocus={e => e.target.style.borderColor = 'var(--teal)'}
                   onBlur={e => e.target.style.borderColor = 'var(--border)'}
                 />
@@ -243,13 +255,14 @@ export default function AppointmentDetail() {
                 {appt.patientName?.charAt(0)}
               </div>
               {[
-                ['Name', appt.patientName],
-                ['Phone', appt.phone],
+                ['Name',         appt.patientName],
+                ['Phone',        appt.phone],
                 ['Age / Gender', `${appt.age}y · ${appt.gender}`],
-                ['Visit Type', appt.visitType],
-                ['Token', `#${appt.tokenNumber}`],
-                ['Time', appt.appointmentTime],
-                ['Complaint', appt.chiefComplaint || '—'],
+                ['Visit Type',   appt.visitType],
+                ['Token',        `#${appt.tokenNumber}`],
+                ['Time',         appt.appointmentTime],
+                ['Date',         appt.date],
+                ['Complaint',    appt.chiefComplaint || '—'],
               ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                   <span style={{ color: 'var(--muted)' }}>{l}</span>
@@ -267,10 +280,9 @@ export default function AppointmentDetail() {
 
           {appt.status === 'in-consultation' && (
             <div style={{ background: 'var(--teal)', borderRadius: 'var(--radius)', padding: '16px 20px', textAlign: 'center' }}>
-              <div style={{ color: '#fff', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                Patient is in consultation
-              </div>
-              <Btn onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}
+              <div style={{ color: '#fff', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Patient is in consultation</div>
+              <Btn
+                onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}
                 style={{ background: '#fff', color: 'var(--teal)', width: '100%', justifyContent: 'center' }}>
                 ✍ Write Prescription
               </Btn>

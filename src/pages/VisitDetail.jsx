@@ -7,7 +7,7 @@ import Layout from '../components/Layout'
 import { Card, CardHeader, Badge, Btn, Toast } from '../components/UI'
 import { getVisit, updateVisit } from '../firebase/db'
 import { getPrescriptions } from '../firebase/clinicDb'
-import { sendCampaign, uploadPdfForWhatsApp } from '../firebase/whatsapp'
+import WhatsAppLog from '../components/WhatsAppLog'
 import { format } from 'date-fns'
 
 const STATUS_FLOW = ['registered', 'sampled', 'processing', 'ready']
@@ -23,6 +23,7 @@ export default function VisitDetail() {
   const [uploading, setUploading]   = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [prescriptions, setPrescriptions]   = useState([])
+  const [waLogKey, setWaLogKey]             = useState(0)
   const fileInputRef = useRef()
   const printRef = useRef()
 
@@ -62,10 +63,13 @@ export default function VisitDetail() {
     setSending(true)
     const result = await sendCampaign(
       profile.whatsappCampaigns, 'report_ready', visit.phone,
-      [visit.patientName, profile.centreName]
+      [visit.patientName, profile.centreName],
+      null,
+      { centreId: user.uid, patientName: visit.patientName, visitId: id }
     )
     setToast({ message: result.ok ? '✓ WhatsApp sent successfully' : `WhatsApp failed: ${result.error}`, type: result.ok ? 'success' : 'error' })
     setSending(false)
+    if (result.ok) setWaLogKey(k => k + 1)
   }
 
   const handlePrint = useReactToPrint({ content: () => printRef.current })
@@ -126,7 +130,8 @@ export default function VisitDetail() {
     const result = await sendCampaign(
       profile.whatsappCampaigns, 'report_ready', visit.phone,
       [visit.patientName, profile.centreName],
-      mediaOverride
+      mediaOverride,
+      { centreId: user.uid, patientName: visit.patientName, visitId: id }
     )
     setToast({
       message: result.ok
@@ -135,6 +140,7 @@ export default function VisitDetail() {
       type: result.ok ? 'success' : 'error'
     })
     setSending(false)
+    if (result.ok) setWaLogKey(k => k + 1)
   }
 
   if (loading) return <Layout title="Visit Detail"><div style={{ textAlign: 'center', padding: 60, color: 'var(--muted)' }}>Loading…</div></Layout>
@@ -388,106 +394,13 @@ export default function VisitDetail() {
               </div>
             )}
           </Card>
-        </div>
 
-        {/* RIGHT */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Patient info */}
+          {/* WhatsApp Activity */}
           <Card>
-            <CardHeader title="Patient Info" />
-            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: 14, background: 'var(--teal-light)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 22, fontWeight: 700, color: 'var(--teal)', margin: '4px auto 8px'
-              }}>
-                {visit.patientName?.charAt(0)}
-              </div>
-              {[['Name', visit.patientName], ['Phone', visit.phone], ['Age', visit.age + ' yrs'], ['Gender', visit.gender], ['Sample Type', visit.sampleType], ['Ref. Doctor', visit.refDoctor || '—'], ['Bill No.', visit.billNo], ['Date', visit.date]].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span style={{ color: 'var(--muted)' }}>{l}</span>
-                  <span style={{ fontWeight: 500, color: 'var(--navy)' }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Bill */}
-          <Card>
-            <CardHeader title="Bill" />
-            <div style={{ padding: '16px 20px' }}>
-              {[['Subtotal', `₹${visit.subtotal || 0}`], ['GST', `₹${visit.gstAmount || 0}`], ['Discount', `-₹${visit.discount || 0}`]].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>
-                  <span>{l}</span><span>{v}</span>
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, color: 'var(--navy)', paddingTop: 10, borderTop: '2px solid var(--border)' }}>
-                <span>Total</span><span>₹{visit.totalAmount || 0}</span>
-              </div>
-              <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-                {visit.paymentStatus !== 'paid' ? (
-                  <Btn onClick={() => handlePaymentUpdate(true)} style={{ flex: 1, justifyContent: 'center' }} variant="success">
-                    ✓ Mark Paid
-                  </Btn>
-                ) : (
-                  <div style={{ flex: 1, background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 10, padding: '10px', textAlign: 'center', fontSize: 13, fontWeight: 500 }}>
-                    ✅ Paid
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
-
-          {/* Prescription history */}
-          <Card>
-            <CardHeader title="Prescriptions" sub={`${prescriptions.length} found for this patient`} />
-            {prescriptions.length === 0 ? (
-              <div style={{ padding: '20px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-                No prescriptions on record for this patient.
-              </div>
-            ) : (
-              <div>
-                {prescriptions.map(p => (
-                  <div key={p.id}
-                    onClick={() => navigate(`/clinic/prescription/${p.id}`)}
-                    style={{
-                      padding: '12px 18px', borderBottom: '1px solid var(--border)',
-                      cursor: 'pointer', transition: 'background 0.15s'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-light)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
-                          {p.diagnosis || 'Prescription'}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                          {p.date} · {(p.medicines || []).length} medicine{(p.medicines || []).length !== 1 ? 's' : ''}
-                          {p.doctorName ? ` · Dr. ${p.doctorName}` : ''}
-                        </div>
-                        {(p.medicines || []).slice(0, 2).map((m, i) => (
-                          <div key={i} style={{ fontSize: 11, color: 'var(--slate)', marginTop: 2 }}>
-                            💊 {m.name} — {m.frequency} × {m.duration}
-                          </div>
-                        ))}
-                        {(p.medicines || []).length > 2 && (
-                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-                            +{p.medicines.length - 2} more…
-                          </div>
-                        )}
-                      </div>
-                      <span style={{ color: 'var(--teal)', fontSize: 16, marginLeft: 8 }}>›</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <CardHeader title="WhatsApp Activity" sub="Sent messages & patient replies" />
+            <WhatsAppLog key={waLogKey} centreId={user?.uid} visitId={id} />
           </Card>
         </div>
-
-      </div>{/* end grid */}
 
       {/* PRINT TEMPLATE — off-screen, NOT display:none (breaks print) */}
       <div ref={printRef} style={{ position: 'absolute', left: '-9999px', top: 0 }}>
