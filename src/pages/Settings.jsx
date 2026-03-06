@@ -25,6 +25,8 @@ const PURPOSE_OPTIONS = [
   { value: 'report_ready',   label: 'report_ready — Report ready (diagnostic)' },
   { value: 'appt_confirm',   label: 'appt_confirm — Appointment booked (clinic)' },
   { value: 'followup',       label: 'followup — Follow-up reminder (clinic)' },
+  { value: 'vaccine_given',   label: 'vaccine_given — Vaccine marked as given confirmation' },
+  { value: 'vaccine_reminder',label: 'vaccine_reminder — Upcoming vaccine reminder to parents' },
   { value: 'custom',         label: 'custom — Other / custom use' },
 ]
 
@@ -231,6 +233,7 @@ export default function Settings() {
     clinicEnd:         '20:00',
     whatsappCampaigns: [],
     lateCheckinPenalty: '0',
+    vaccinationReminderDays: '7,3,1',
   })
 
   useEffect(() => {
@@ -250,6 +253,7 @@ export default function Settings() {
         clinicEnd:         profile.clinicEnd         || '20:00',
         whatsappCampaigns: profile.whatsappCampaigns || [],
         lateCheckinPenalty: profile.lateCheckinPenalty || '0',
+        vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
       }))
     }
   }, [profile])
@@ -361,7 +365,8 @@ export default function Settings() {
             <code>bill_generated</code> — sent when a patient bill is created<br />
             <code>report_ready</code> — sent when report is marked ready<br />
             <code>appt_confirm</code> — sent when appointment is booked (clinic)<br />
-            <code>followup</code> — sent for follow-up reminders (clinic)
+            <code>followup</code> — sent for follow-up reminders (clinic)<br />
+            <code>vaccine_given</code> — sent when a vaccine is marked as given (params: childName, vaccineName, givenDate, nextVaccineInfo, centreName)
           </div>
 
           {(form.whatsappCampaigns || []).length === 0 && (
@@ -451,6 +456,40 @@ export default function Settings() {
             whatsappCampaigns: [...(f.whatsappCampaigns || []), { ...newC, enabled: true }]
           }))} />
         </Section>
+
+        {(centreType === 'clinic' || centreType === 'both') && profile?.modules?.vaccination && (
+          <Section title="💉 Vaccination Reminder Settings">
+            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.8 }}>
+              Set how many days before a vaccine is due to send WhatsApp reminders to parents.
+              Requires a campaign with purpose <code>vaccine_reminder</code> in WhatsApp Campaigns above.
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--slate)', display: 'block', marginBottom: 6 }}>
+                Send reminders (days before due date)
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {['7', '3', '1'].map(day => {
+                  const days = (form.vaccinationReminderDays || '7,3,1').split(',').map(s => s.trim())
+                  const checked = days.includes(day)
+                  return (
+                    <label key={day} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
+                      <input type="checkbox" checked={checked} onChange={() => {
+                        const current = (form.vaccinationReminderDays || '').split(',').map(s => s.trim()).filter(Boolean)
+                        const updated = checked ? current.filter(d => d !== day) : [...current, day]
+                        updated.sort((a,b) => Number(b) - Number(a))
+                        setForm(f => ({ ...f, vaccinationReminderDays: updated.join(',') }))
+                      }} style={{ width: 16, height: 16, accentColor: 'var(--teal)' }} />
+                      {day === '7' ? '7 days before (1 week)' : day === '3' ? '3 days before' : '1 day before'}
+                    </label>
+                  )
+                })}
+              </div>
+              <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>
+                Currently set: {form.vaccinationReminderDays || 'none'} days before due date
+              </div>
+            </div>
+          </Section>
+        )}
 
         <Btn type="submit" disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
           {saving ? 'Saving…' : '💾 Save Settings'}

@@ -1,14 +1,11 @@
 // src/firebase/vaccinationDb.js
 import { db } from './config'
 import {
-  collection, doc, addDoc, getDoc, getDocs, updateDoc,
-  query, orderBy, serverTimestamp, where, limit
+  collection, doc, addDoc, getDoc, getDocs, updateDoc, setDoc,
+  query, orderBy, serverTimestamp, where, limit, deleteDoc
 } from 'firebase/firestore'
 
 // ── DEFAULT VACCINE SCHEDULE ─────────────────────────────────────────────────
-// Each entry: { id, name, atMonths, description }
-// atMonths: age in months when vaccine is due
-
 export const DEFAULT_VACCINE_SCHEDULE = [
   { id: 'bcg',          name: 'BCG',               atMonths: 0,   description: 'At birth' },
   { id: 'hepb_0',       name: 'Hepatitis B (Birth)',atMonths: 0,   description: 'At birth' },
@@ -47,7 +44,6 @@ export const DEFAULT_VACCINE_SCHEDULE = [
   { id: 'mmr_3',        name: 'MMR 3',             atMonths: 60,  description: '5 years' },
 ]
 
-// Calculate due date from DOB + months
 export function getDueDate(dobStr, atMonths) {
   const dob = new Date(dobStr)
   const due = new Date(dob)
@@ -86,7 +82,6 @@ export async function searchChildrenByPhone(centreId, phone) {
   const q   = query(ref, where('motherPhone', '==', phone), limit(5))
   const snap = await getDocs(q)
   if (!snap.empty) return snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  // Try father phone
   const q2   = query(ref, where('fatherPhone', '==', phone), limit(5))
   const snap2 = await getDocs(q2)
   return snap2.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -96,14 +91,68 @@ export async function searchChildrenByPhone(centreId, phone) {
 
 export async function markVaccineGiven(centreId, childId, vaccineId, { givenDate, batchNo, notes, givenBy }) {
   const ref = doc(db, 'centres', centreId, 'children', childId)
-  // vaccines is a map: { [vaccineId]: { givenDate, batchNo, notes, givenBy, recordedAt } }
   await updateDoc(ref, {
     [`vaccines.${vaccineId}`]: { givenDate, batchNo: batchNo || '', notes: notes || '', givenBy: givenBy || '', recordedAt: new Date().toISOString() }
   })
 }
 
 export async function unmarkVaccine(centreId, childId, vaccineId) {
-  // Remove by setting to null — handled in UI
   const ref = doc(db, 'centres', centreId, 'children', childId)
   await updateDoc(ref, { [`vaccines.${vaccineId}`]: null })
+}
+
+// ── REMINDER SCHEDULING ───────────────────────────────────────────────────────
+// Stores reminder jobs in vaccinationReminders collection
+// Vercel cron at /api/vaccination-reminders picks these up daily and sends WhatsApp
+
+export async function scheduleVaccinationReminders(centreId, childId, childData, nextVaccine, reminderDays = [7, 3, 1]) {
+  if (!nextVaccine || !childData.dob) return
+
+  const dueDate = getDueDate(childData.dob, nextVaccine.atMonths)
+  const dueDateObj = new Date(dueDate)
+
+  // Delete old reminders for this child+vaccine combo
+  const existingRef = collection(db, 'vaccinationReminders')
+  const existing = await getDocs(query(existingRef,
+    where('centreId', '==', centreId),
+    where('childId', '==', childId),
+    where('vaccineId', '==', nextVaccine.id)
+  ))
+  for (const d of existing.docs) await deleteDoc(d.ref)
+
+  // Create new reminders for each configured day
+  const phones = [childData.motherPhone, childData.fatherPhone].filter(Boolean)
+  if (phones.length === 0) return
+
+  for (const daysBefore of reminderDays) {
+    const sendOn = new Date(dueDateObj)
+    sendOn.setDate(sendOn.getDate() - daysBefore)
+    if (sendOn < new Date()) continue // skip past dates
+
+    await addDoc(existingRef, {
+      centreId,
+      childId,
+      childName:    childData.childName,
+      vaccineId:    nextVaccine.id,
+      vaccineName:  nextVaccine.name,
+      dueDate,
+      daysBefore,
+      sendOn:       sendOn.toISOString().split('T')[0],
+      phones,
+      status:       'pending',
+      createdAt:    serverTimestamp()
+    })
+  }
+}
+
+export async function getPendingReminders(centreId) {
+  const today = new Date().toISOString().split('T')[0]
+  const ref   = collection(db, 'vaccinationReminders')
+  const q     = query(ref,
+    where('centreId', '==', centreId),
+    where('sendOn', '<=', today),
+    where('status', '==', 'pending')
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
