@@ -63,14 +63,14 @@ export default async function handler(req, res) {
 
   try {
     // Get all active centres
-    const centresSnap = await db.collection('centres').get()
+    const centresSnap = await db.collection('clients').get()
 
     for (const centreDoc of centresSnap.docs) {
       const centreId = centreDoc.id
 
       // Get centre profile
       const profileSnap = await db
-        .collection('centres').doc(centreId)
+        .collection('clients').doc(centreId)
         .collection('profile').doc('main').get()
 
       if (!profileSnap.exists) continue
@@ -87,7 +87,7 @@ export default async function handler(req, res) {
 
       // Get tomorrow's appointments
       const apptSnap = await db
-        .collection('centres').doc(centreId)
+        .collection('clients').doc(centreId)
         .collection('appointments')
         .where('date', '==', dateStr)
         .where('status', 'in', ['scheduled', 'confirmed'])

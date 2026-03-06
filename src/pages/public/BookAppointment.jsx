@@ -193,7 +193,7 @@ export default function BookAppointment() {
   useEffect(() => {
     async function load() {
       try {
-        const snap = await getDoc(doc(db, 'centres', centreId, 'profile', 'main'))
+        const snap = await getDoc(doc(db, 'clients', centreId, 'profile', 'main'))
         if (!snap.exists()) { setNotFound(true); setLoading(false); return }
         const data = snap.data()
         setCentre(data)
@@ -229,7 +229,7 @@ export default function BookAppointment() {
       try {
         const dateStr = selDate.toISOString().split('T')[0]
         const q = query(
-          collection(db, 'centres', centreId, 'appointments'),
+          collection(db, 'clients', centreId, 'appointments'),
           where('date', '==', dateStr),
           where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
         )
@@ -296,17 +296,17 @@ export default function BookAppointment() {
 
       // ── 1. Upsert patient ──
       let patientId = null
-      const pq    = query(collection(db, 'centres', centreId, 'patients'), where('phone', '==', phone.trim()))
+      const pq    = query(collection(db, 'clients', centreId, 'patients'), where('phone', '==', phone.trim()))
       const pSnap = await getDocs(pq)
       if (!pSnap.empty) {
         patientId = pSnap.docs[0].id
         // update last visit
-        await updateDoc(doc(db, 'centres', centreId, 'patients', patientId), {
+        await updateDoc(doc(db, 'clients', centreId, 'patients', patientId), {
           name: name.trim(), age: age || '', gender: gender || '',
           lastClinicVisit: dateStr
         })
       } else {
-        const newPat = await addDoc(collection(db, 'centres', centreId, 'patients'), {
+        const newPat = await addDoc(collection(db, 'clients', centreId, 'patients'), {
           name: name.trim(), phone: phone.trim(), age: age || '', gender: gender || '',
           source: 'online_booking', lastClinicVisit: dateStr,
           createdAt: serverTimestamp()
@@ -322,7 +322,7 @@ export default function BookAppointment() {
       await runTransaction(db, async (tx) => {
         // Fetch all appointments for this date
         const apptSnap = await getDocs(
-          query(collection(db, 'centres', centreId, 'appointments'),
+          query(collection(db, 'clients', centreId, 'appointments'),
             where('date', '==', dateStr),
             where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
           )
@@ -339,7 +339,7 @@ export default function BookAppointment() {
         tokenNumber = tokens.length > 0 ? Math.max(...tokens) + 1 : 1
 
         // Write appointment with all fields matching dashboard expectations
-        const newApptRef = doc(collection(db, 'centres', centreId, 'appointments'))
+        const newApptRef = doc(collection(db, 'clients', centreId, 'appointments'))
         apptId = newApptRef.id
         tx.set(newApptRef, {
           // Dashboard-required fields
@@ -393,7 +393,7 @@ export default function BookAppointment() {
         // Refresh booked slots so UI reflects reality
         const dateStr = selDate.toISOString().split('T')[0]
         const snap = await getDocs(query(
-          collection(db, 'centres', centreId, 'appointments'),
+          collection(db, 'clients', centreId, 'appointments'),
           where('date', '==', dateStr),
           where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'confirmed'])
         ))
