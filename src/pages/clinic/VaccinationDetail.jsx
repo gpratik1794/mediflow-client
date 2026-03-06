@@ -99,26 +99,42 @@ export default function VaccinationDetail() {
     setSaving(false)
   }
 
-  // Send WA for a vaccine and return { motherStatus, fatherStatus }
+  // Build ordered params array from a paramMapping config + context data
+  // parentName resolves to motherName or fatherName depending on recipient
+  function buildParamsFromMapping(mapping, context) {
+    return mapping.map(variable => {
+      if (!variable || variable === '__custom__') return context.__customText || ''
+      return context[variable] !== undefined ? (context[variable] ?? '') : ''
+    })
+  }
+
+  // Send WA for a vaccine and return { mother: 'sent'|'failed'|null, father: ... }
   async function sendVaccineWa(vaccineId, vaccineName, params) {
     const campaigns = profile?.whatsappCampaigns || []
     const campaign  = campaigns.find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
-    // If campaign has paramMapping, use it to build params automatically
-    const finalParams = campaign?.paramMapping?.length
-      ? buildParamsFromMapping(campaign.paramMapping, {
-          childName: child?.childName, vaccineName,
-          givenDate: params[2], // date given (already formatted)
-          nextVaccineInfo: params[3], nextVaccineName: params[3],
-          nextVaccineDate: '', centreName: profile?.centreName,
-          guardianName: child?.guardianName,
-          motherPhone: child?.motherPhone, fatherPhone: child?.fatherPhone,
-        })
-      : params
     const phones = { mother: child?.motherPhone || null, father: child?.fatherPhone || null }
+    // Parent names — stored in guardianName as father's name; mother name not stored separately
+    const parentNames = {
+      mother: child?.motherName || child?.guardianName || 'Parent',
+      father: child?.guardianName || 'Parent',
+    }
     const results = { mother: null, father: null }
     for (const [who, phone] of Object.entries(phones)) {
       if (!phone) continue
       try {
+        const finalParams = campaign?.paramMapping?.length
+          ? buildParamsFromMapping(campaign.paramMapping, {
+              childName:       child?.childName,
+              vaccineName,
+              givenDate:       params[2],
+              nextVaccineInfo: params[3],
+              nextVaccineName: params[3],
+              nextVaccineDate: '',
+              centreName:      profile?.centreName,
+              guardianName:    child?.guardianName,
+              parentName:      parentNames[who],  // ← per-recipient
+            })
+          : params
         const res = await sendCampaign(campaigns, 'vaccine_given', phone, finalParams)
         results[who] = res?.ok ? 'sent' : 'failed'
       } catch { results[who] = 'failed' }

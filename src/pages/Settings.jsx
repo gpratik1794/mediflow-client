@@ -31,9 +31,10 @@ const PURPOSE_OPTIONS = [
 ]
 
 // Available variables for each purpose — used in param mapping UI
+// parentName = mother's name when sending to mother, father's name when sending to father
 const VARIABLES_BY_PURPOSE = {
-  vaccine_given:    ['childName','vaccineName','givenDate','nextVaccineName','nextVaccineDate','centreName','guardianName','motherPhone','fatherPhone'],
-  vaccine_reminder: ['childName','nextVaccineName','nextVaccineDate','centreName','guardianName'],
+  vaccine_given:    ['childName','vaccineName','givenDate','nextVaccineInfo','centreName','parentName','guardianName','nextVaccineName','nextVaccineDate'],
+  vaccine_reminder: ['childName','nextVaccineName','nextVaccineDate','centreName','parentName','guardianName'],
   appt_confirm:     ['patientName','apptDate','apptTime','doctorName','centreName'],
   followup:         ['patientName','apptDate','apptTime','doctorName','centreName'],
   bill_generated:   ['patientName','billAmount','visitDate','centreName'],
@@ -299,7 +300,7 @@ function CampaignAdder({ onAdd, globalApiKey }) {
         </div>
 
         <div style={{ background: '#F0F9FF', borderRadius: 8, padding: '10px 12px', fontSize: 11, color: '#0369A1', lineHeight: 1.6 }}>
-          💡 Variables like <code>childName</code>, <code>vaccineName</code> etc. are filled automatically by MediFlow when sending. You can still edit individual params in the "Mark Given" modal before confirming.
+          💡 Variables like <code>childName</code>, <code>vaccineName</code> etc. are filled automatically by MediFlow when sending. <code>parentName</code> automatically uses the mother's name when sending to mother, and father's name when sending to father. You can still edit individual params in the "Mark Given" modal before confirming.
         </div>
 
         {err && <div style={{ background: '#FEF2F2', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#C0392B' }}>{err}</div>}
@@ -449,21 +450,31 @@ export default function Settings() {
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
-  async function handleSave(e) {
-    e.preventDefault()
+  async function saveFields(fields) {
     setSaving(true)
     try {
       await setDoc(
         doc(db, 'centres', user.uid, 'profile', 'main'),
-        { ...form, updatedAt: serverTimestamp() },
+        { ...fields, updatedAt: serverTimestamp() },
         { merge: true }
       )
-      setToast({ message: 'Settings saved successfully', type: 'success' })
+      setToast({ message: 'Saved successfully ✓', type: 'success' })
     } catch (err) {
       console.error(err)
-      setToast({ message: 'Failed to save settings', type: 'error' })
+      setToast({ message: 'Failed to save. Try again.', type: 'error' })
     }
     setSaving(false)
+  }
+
+  function handleSaveCentreInfo()          { saveFields({ centreName: form.centreName, ownerName: form.ownerName, phone: form.phone, city: form.city, address: form.address }) }
+  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, clinicStart: form.clinicStart, clinicEnd: form.clinicEnd, lateCheckinPenalty: form.lateCheckinPenalty }) }
+  function handleSaveBilling()             { saveFields({ gst: form.gst, gstNumber: form.gstNumber }) }
+  function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
+
+  // Legacy full-save kept for reference (not used in UI anymore)
+  async function handleSave(e) {
+    e?.preventDefault()
+    saveFields(form)
   }
 
   const gstOpts = [
@@ -477,7 +488,7 @@ export default function Settings() {
 
   return (
     <Layout title="Settings">
-      <form onSubmit={handleSave} style={{ maxWidth: 680 }}>
+      <div style={{ maxWidth: 680 }}>
 
         <Section title="Centre Information">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -498,6 +509,9 @@ export default function Settings() {
             <Input label="City"             value={form.city}  onChange={setF('city')}  placeholder="City" />
           </div>
           <Input label="Full Address" value={form.address} onChange={setF('address')} placeholder="Street, Area, City, PIN" />
+          <Btn type="button" onClick={handleSaveCentreInfo} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+            {saving ? 'Saving…' : '💾 Save Centre Info'}
+          </Btn>
         </Section>
 
         {(centreType === 'clinic' || centreType === 'both') && (
@@ -533,6 +547,9 @@ export default function Settings() {
               For example, set to 3: if patient #4 was skipped and #5,#6,#7 have gone in, patient #4 checks in and goes after #10 (current+3).
               Set to 0 to let late patients go next in line immediately.
             </div>
+            <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+              {saving ? 'Saving…' : '💾 Save Clinic Settings'}
+            </Btn>
           </Section>
         )}
 
@@ -540,6 +557,9 @@ export default function Settings() {
           <Section title="Billing & GST">
             <Select label="Default GST Rate" value={form.gst} onChange={setF('gst')} options={gstOpts} />
             <Input label="GST Number" value={form.gstNumber} onChange={setF('gstNumber')} placeholder="22AAAAA0000A1Z5 (optional)" />
+            <Btn type="button" onClick={handleSaveBilling} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+              {saving ? 'Saving…' : '💾 Save Billing Settings'}
+            </Btn>
           </Section>
         )}
 
@@ -687,13 +707,12 @@ export default function Settings() {
                 Currently set: {form.vaccinationReminderDays || 'none'} days before due date
               </div>
             </div>
+            <Btn type="button" onClick={handleSaveVaccinationSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+              {saving ? 'Saving…' : '💾 Save Reminder Settings'}
+            </Btn>
           </Section>
         )}
-
-        <Btn type="submit" disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-          {saving ? 'Saving…' : '💾 Save Settings'}
-        </Btn>
-      </form>
+      </div>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </Layout>
