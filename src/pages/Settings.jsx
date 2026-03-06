@@ -39,7 +39,7 @@ const VARIABLES_BY_PURPOSE = {
   followup:         ['patientName','apptDate','apptTime','doctorName','centreName'],
   bill_generated:   ['patientName','billAmount','visitDate','centreName'],
   report_ready:     ['patientName','visitDate','centreName'],
-  custom:           ['patientName','centreName','customParam1','customParam2'],
+  custom:           ['childName','vaccineName','givenDate','nextVaccineInfo','nextVaccineName','nextVaccineDate','parentName','guardianName','patientName','apptDate','apptTime','doctorName','centreName','billAmount','visitDate','customParam1','customParam2'],
 }
 
 const TYPE_LABELS = {
