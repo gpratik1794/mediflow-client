@@ -193,7 +193,7 @@ export default function BookAppointment() {
   useEffect(() => {
     async function load() {
       try {
-        const snap = await getDoc(doc(db, 'clients', centreId, 'profile', 'main'))
+        const snap = await getDoc(doc(db, 'clients', centreId))
         if (!snap.exists()) { setNotFound(true); setLoading(false); return }
         const data = snap.data()
         setCentre(data)

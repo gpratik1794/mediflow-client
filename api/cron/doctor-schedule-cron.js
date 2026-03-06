@@ -70,8 +70,7 @@ export default async function handler(req, res) {
 
       // Get centre profile
       const profileSnap = await db
-        .collection('clients').doc(centreId)
-        .collection('profile').doc('main').get()
+        .collection('clients').doc(centreId).get()
 
       if (!profileSnap.exists) continue
       const profile = profileSnap.data()
