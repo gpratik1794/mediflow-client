@@ -153,3 +153,71 @@ export const VITALS_FIELDS = [
   { key: 'spo2', label: 'SpO2', placeholder: '99%' },
   { key: 'rbs', label: 'RBS', placeholder: 'mg/dL' },
 ]
+
+// ── DOSAGE CONSTANTS ──────────────────────────────────────────────────────────
+
+export const DOSAGE_FREQUENCY = ['1-0-1', '1-1-1', '0-0-1', '1-0-0', '0-1-0', 'SOS', 'Once a day', 'Twice a day', 'Thrice a day']
+export const DOSAGE_DURATION  = ['3 days', '5 days', '7 days', '10 days', '15 days', '1 month', 'Ongoing']
+export const DOSAGE_TIMING    = ['Before food', 'After food', 'With food', 'Empty stomach', 'At bedtime']
+
+export const DEFAULT_MEDICINES = [
+  { name: 'Amoxicillin 500mg',      category: 'Antibiotics' },
+  { name: 'Azithromycin 500mg',     category: 'Antibiotics' },
+  { name: 'Ciprofloxacin 500mg',    category: 'Antibiotics' },
+  { name: 'Cefixime 200mg',         category: 'Antibiotics' },
+  { name: 'Metronidazole 400mg',    category: 'Antibiotics' },
+  { name: 'Doxycycline 100mg',      category: 'Antibiotics' },
+  { name: 'Paracetamol 500mg',      category: 'Pain & Fever' },
+  { name: 'Ibuprofen 400mg',        category: 'Pain & Fever' },
+  { name: 'Diclofenac 50mg',        category: 'Pain & Fever' },
+  { name: 'Nimesulide 100mg',       category: 'Pain & Fever' },
+  { name: 'Aceclofenac 100mg',      category: 'Pain & Fever' },
+  { name: 'Pantoprazole 40mg',      category: 'Gastroenterology' },
+  { name: 'Omeprazole 20mg',        category: 'Gastroenterology' },
+  { name: 'Domperidone 10mg',       category: 'Gastroenterology' },
+  { name: 'Ondansetron 4mg',        category: 'Gastroenterology' },
+  { name: 'ORS Sachet',             category: 'Gastroenterology' },
+  { name: 'Vitamin C',              category: 'Vitamins' },
+  { name: 'Vitamin D3 60000 IU',    category: 'Vitamins' },
+  { name: 'B-Complex',              category: 'Vitamins' },
+  { name: 'Iron + Folic Acid',      category: 'Vitamins' },
+  { name: 'Calcium + D3',           category: 'Vitamins' },
+  { name: 'Metformin 500mg',        category: 'Diabetes' },
+  { name: 'Metformin 1000mg',       category: 'Diabetes' },
+  { name: 'Glimepiride 1mg',        category: 'Diabetes' },
+  { name: 'Glimepiride 2mg',        category: 'Diabetes' },
+  { name: 'Amlodipine 5mg',         category: 'Hypertension' },
+  { name: 'Telmisartan 40mg',       category: 'Hypertension' },
+  { name: 'Atenolol 50mg',          category: 'Hypertension' },
+  { name: 'Losartan 50mg',          category: 'Hypertension' },
+  { name: 'Montelukast 10mg',       category: 'Respiratory' },
+  { name: 'Levocetrizine 5mg',      category: 'Respiratory' },
+  { name: 'Cetirizine 10mg',        category: 'Respiratory' },
+  { name: 'Ambroxol 30mg',          category: 'Respiratory' },
+  { name: 'Salbutamol 2mg',         category: 'Respiratory' },
+  { name: 'Levothyroxine 25mcg',    category: 'Thyroid' },
+  { name: 'Levothyroxine 50mcg',    category: 'Thyroid' },
+  { name: 'Levothyroxine 100mcg',   category: 'Thyroid' },
+  { name: 'Betamethasone Cream',    category: 'Skin / Eye / Ear' },
+  { name: 'Clotrimazole Cream',     category: 'Skin / Eye / Ear' },
+  { name: 'Mupirocin',              category: 'Skin / Eye / Ear' },
+  { name: 'Ciprofloxacin Eye Drops',category: 'Skin / Eye / Ear' },
+]
+
+// ── SAVE MEDICINE ─────────────────────────────────────────────────────────────
+
+export async function saveMedicine(centreId, medicine) {
+  const ref = collection(db, 'centres', centreId, 'medicines')
+  const existing = await getDocs(query(ref, where('name', '==', medicine.name), limit(1)))
+  if (!existing.empty) return existing.docs[0].id
+  const docRef = await addDoc(ref, { ...medicine, createdAt: serverTimestamp() })
+  return docRef.id
+}
+
+// ── SEND CLINIC WHATSAPP (legacy — used by FollowUps.jsx) ────────────────────
+
+export async function sendClinicWhatsApp(centreId, { phone, patientName, message }) {
+  // Stub — actual sending goes through whatsapp.js sendCampaign
+  console.log('[sendClinicWhatsApp] Use sendCampaign from whatsapp.js instead', { phone, patientName })
+  return { ok: false, error: 'Use sendCampaign from whatsapp.js' }
+}
