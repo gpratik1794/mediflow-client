@@ -50,3 +50,7 @@ a { text-decoration: none; color: inherit; }
 }
 .fade-up   { animation: fadeUp  0.35s ease both; }
 .fade-in   { animation: fadeIn  0.25s ease both; }
+
+::placeholder { color: #B0BEC5; opacity: 1; }
+::-webkit-input-placeholder { color: #B0BEC5; }
+::-moz-placeholder { color: #B0BEC5; opacity: 1; }
