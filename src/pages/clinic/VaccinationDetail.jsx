@@ -11,8 +11,8 @@ import {
   scheduleVaccinationReminders
 } from '../../firebase/vaccinationDb'
 import { sendCampaign } from '../../firebase/whatsapp'
-import { doc, setDoc } from 'firebase/firestore'
 import { db } from '../../firebase/config'
+import { doc, updateDoc } from 'firebase/firestore'
 
 const iStyle = { width: '100%', padding: '9px 13px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', outline: 'none', background: 'var(--surface)', color: 'var(--navy)', boxSizing: 'border-box' }
 const lStyle = { fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }
@@ -120,12 +120,9 @@ export default function VaccinationDetail() {
   // Save WA status onto the vaccine record in Firestore
   async function saveWaStatus(vaccineId, waStatus) {
     try {
-      const existing = child?.vaccines?.[vaccineId] || {}
-      await setDoc(
-        doc(db, 'centres', user.uid, 'vaccination', id),
-        { vaccines: { [vaccineId]: { ...existing, waStatus } } },
-        { merge: true }
-      )
+      await updateDoc(doc(db, 'centres', user.uid, 'children', id), {
+        [`vaccines.${vaccineId}.waStatus`]: waStatus
+      })
     } catch (e) { console.warn('WA status save failed:', e) }
   }
 
@@ -233,10 +230,11 @@ export default function VaccinationDetail() {
     setMarkForm({ givenDate: today, batchNo: '', notes: '', givenBy: '' })
     setSkipWa(false)
     const nextV = DEFAULT_VACCINE_SCHEDULE.find(v2 => v2.id !== vaccine.id && !(given[v2.id]?.givenDate))
+    const fmtToday = formatDate(today)
     setWaParams([
       child?.childName || '',
       vaccine.name,
-      today,
+      fmtToday,
       nextV && child?.dob ? `${nextV.name} on ${formatDate(getDueDate(child.dob, nextV.atMonths))}` : 'All vaccines completed!',
       profile?.centreName || ''
     ])
@@ -441,7 +439,7 @@ export default function VaccinationDetail() {
               <div><label style={lStyle}>Date Given *</label>
                 <div style={{ position: 'relative' }} onClick={e => e.currentTarget.querySelector('input').showPicker?.()}>
                   <input type="date" value={markForm.givenDate} max={today}
-                    onChange={e => { setMarkForm(f => ({ ...f, givenDate: e.target.value })); setWaParams(p => { const n=[...p]; n[2]=e.target.value; return n }) }}
+                    onChange={e => { setMarkForm(f => ({ ...f, givenDate: e.target.value })); setWaParams(p => { const n=[...p]; n[2]=formatDate(e.target.value); return n }) }}
                     style={{ ...iStyle, cursor: 'pointer', colorScheme: 'light' }} />
                 </div>
               </div>

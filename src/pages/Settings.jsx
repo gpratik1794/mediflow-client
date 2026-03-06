@@ -36,63 +36,53 @@ const TYPE_LABELS = {
   both: 'Clinic + Diagnostic',
 }
 
-// Add-new-campaign sub-form — also outside main component
-function CampaignAdder({ onAdd }) {
+// Add-new-campaign sub-form — NIVO style
+function CampaignAdder({ onAdd, globalApiKey }) {
   const [open, setOpen]       = useState(false)
-  const [tab, setTab]         = useState('curl') // 'curl' | 'name'
-  const [name, setName]       = useState('')
+  const [tab, setTab]         = useState('name') // 'name' | 'curl'
   const [purpose, setPurpose] = useState('bill_generated')
-  const [curl, setCurl]       = useState('')
-  const [preview, setPreview] = useState(null)
-  const [err, setErr]         = useState('')
-  // Manual template name tab
-  const [apiKey, setApiKey]   = useState('')
-  const [tplName, setTplName] = useState('')
-  const [fetching, setFetching] = useState(false)
-  const [fetchedParams, setFetchedParams] = useState(null)
+  // Template name tab
+  const [tplName, setTplName]     = useState('')
   const [paramCount, setParamCount] = useState('3')
+  const [ready, setReady]         = useState(false)
+  // cURL tab
+  const [curl, setCurl]           = useState('')
+  const [preview, setPreview]     = useState(null)
+  const [err, setErr]             = useState('')
+
+  function reset() {
+    setOpen(false); setTplName(''); setParamCount('3'); setReady(false)
+    setCurl(''); setPreview(null); setErr(''); setPurpose('bill_generated')
+  }
 
   function handleCurlChange(v) {
     setCurl(v); setErr('')
-    if (v.length > 20) { setPreview(parseCurl(v)) } else { setPreview(null) }
+    if (v.length > 20) setPreview(parseCurl(v)); else setPreview(null)
   }
 
-  async function handleFetchTemplate() {
-    if (!apiKey.trim() || !tplName.trim()) { setErr('Enter both API Key and Template Name'); return }
-    if (!paramCount || paramCount < 1) { setErr('Enter the number of params for this template'); return }
-    setFetching(true); setErr('')
-    try {
-      // AiSynergy has no fetch API — build the cURL from the provided details
-      const dummyParams = Array.from({ length: Number(paramCount) }, (_, i) => `param${i+1}`)
-      const fakeCurl = `curl -X POST -H "Content-Type: application/json" -d '{"apiKey":"${apiKey.trim()}","campaignName":"${tplName.trim()}","destination":"919999999999","userName":"AISYNERGY","templateParams":${JSON.stringify(dummyParams)},"source":"mediflow","media":{},"attributes":{},"paramsFallbackValue":{"FirstName":"user"}}' https://backend.api-wa.co/campaign/aisynergy/api/v2`
-      setPreview({ apiKey: apiKey.trim(), campaignName: tplName.trim(), paramCount: Number(paramCount), hasMedia: false })
-      if (!name.trim()) setName(tplName.trim())
-      setCurl(fakeCurl)
-      setFetchedParams(true)
-    } catch(e) { setErr('Failed to build template') }
-    setFetching(false)
+  function handleUseName() {
+    if (!tplName.trim()) { setErr('Enter the template/campaign name'); return }
+    if (!globalApiKey?.trim()) { setErr('Save your AiSynergy API Key in the field above first'); return }
+    const count = Number(paramCount) || 3
+    const dummyParams = Array.from({ length: count }, (_, i) => `param${i+1}`)
+    const built = `curl -X POST -H "Content-Type: application/json" -d '{"apiKey":"${globalApiKey.trim()}","campaignName":"${tplName.trim()}","destination":"919999999999","userName":"AISYNERGY","templateParams":${JSON.stringify(dummyParams)},"source":"mediflow","media":{},"attributes":{},"paramsFallbackValue":{"FirstName":"user"}}' https://backend.api-wa.co/campaign/aisynergy/api/v2`
+    setCurl(built)
+    setReady(true)
+    setErr('')
   }
 
   function handleAdd() {
-    if (!name.trim()) { setErr('Enter a campaign label'); return }
-    if (!curl.trim()) { setErr(tab === 'curl' ? 'Paste the cURL' : 'Fetch template first'); return }
+    if (tab === 'name') {
+      if (!tplName.trim()) { setErr('Enter the template name'); return }
+      if (!ready) { setErr('Click "Use This Template" first'); return }
+    }
+    if (!curl.trim()) { setErr('No cURL — use template name or paste cURL'); return }
     const parsed = parseCurl(curl)
-    if (!parsed)       { setErr('Could not parse — paste the full cURL'); return }
-    if (!parsed.apiKey){ setErr('No apiKey found in cURL'); return }
-    onAdd({ name: name.trim(), purpose, curl: curl.trim() })
-    setName(''); setCurl(''); setPreview(null); setErr(''); setOpen(false)
-    setApiKey(''); setTplName(''); setFetchedParams(null); setTab('curl')
+    if (!parsed)        { setErr('Could not parse — check cURL'); return }
+    if (!parsed.apiKey) { setErr('No API key found'); return }
+    onAdd({ name: tplName.trim() || parsed.campaignName, purpose, curl: curl.trim() })
+    reset()
   }
-
-  const tabBtn = (key, label) => (
-    <button type="button" onClick={() => { setTab(key); setErr('') }} style={{
-      flex: 1, padding: '9px 0', border: 'none', cursor: 'pointer',
-      fontFamily: 'DM Sans, sans-serif', fontSize: 12, fontWeight: 600,
-      background: tab === key ? 'var(--teal)' : '#fff',
-      color: tab === key ? '#fff' : 'var(--muted)',
-      borderRadius: key === 'curl' ? '8px 0 0 8px' : '0 8px 8px 0',
-    }}>{label}</button>
-  )
 
   if (!open) return (
     <button type="button" onClick={() => setOpen(true)} style={{
@@ -103,82 +93,80 @@ function CampaignAdder({ onAdd }) {
   )
 
   return (
-    <div style={{ border: '1.5px solid var(--teal)', borderRadius: 12, padding: '18px', display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--teal-light)' }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--teal)' }}>Add New Campaign</div>
+    <div style={{ border: '1.5px solid var(--teal)', borderRadius: 12, padding: '18px', display: 'flex', flexDirection: 'column', gap: 14, background: 'var(--teal-light)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--teal)' }}>Add New Campaign</div>
 
-      <div style={{ display: 'flex', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5 }}>Campaign Label</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Vaccine Confirmation"
-            style={{ width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff' }} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5 }}>Purpose</label>
-          <select value={purpose} onChange={e => setPurpose(e.target.value)} style={{
-            width: '100%', padding: '10px 13px', borderRadius: 9, border: '1.5px solid var(--border)',
-            fontSize: 13, fontFamily: 'DM Sans, sans-serif', background: '#fff', color: 'var(--navy)', boxSizing: 'border-box'
-          }}>
-            {PURPOSE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
+      {/* Purpose */}
+      <div>
+        <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>Purpose</label>
+        <select value={purpose} onChange={e => setPurpose(e.target.value)} style={{
+          width: '100%', padding: '10px 13px', borderRadius: 9, border: '1.5px solid var(--border)',
+          fontSize: 13, fontFamily: 'DM Sans, sans-serif', background: '#fff', color: 'var(--navy)', boxSizing: 'border-box'
+        }}>
+          {PURPOSE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
       </div>
 
       {/* Tab switcher */}
       <div style={{ display: 'flex', border: '1.5px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
-        {tabBtn('curl', '📋 Paste cURL')}
-        {tabBtn('name', '🔍 Template Name')}
+        {['name', 'curl'].map(k => (
+          <button key={k} type="button" onClick={() => { setTab(k); setErr('') }} style={{
+            flex: 1, padding: '9px 0', border: 'none', cursor: 'pointer',
+            fontFamily: 'DM Sans, sans-serif', fontSize: 12, fontWeight: 600,
+            background: tab === k ? 'var(--teal)' : '#fff',
+            color: tab === k ? '#fff' : 'var(--muted)',
+          }}>{k === 'name' ? '🔍 Template Name' : '📋 Paste cURL'}</button>
+        ))}
       </div>
 
-      {tab === 'curl' && (
-        <div>
-          <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5 }}>
-            Paste full cURL from AiSynergy → Campaigns → your campaign → API
-          </label>
-          <textarea value={curl} onChange={e => handleCurlChange(e.target.value)}
-            placeholder={`curl -X POST -H "Content-Type: application/json" -d '{"apiKey":"...","campaignName":"...",...}' https://backend.api-wa.co/campaign/aisynergy/api/v2`}
-            style={{ width: '100%', minHeight: 110, padding: '10px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 11, fontFamily: 'monospace', background: '#fff', resize: 'vertical', lineHeight: 1.6, boxSizing: 'border-box' }} />
-        </div>
-      )}
-
+      {/* Template Name tab — NIVO style */}
       {tab === 'name' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ background: '#FFF7ED', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#C2410C', lineHeight: 1.6 }}>
-            ℹ️ Enter your API key, the exact campaign name from AiSynergy, and how many params the template has. MediFlow will build the connection automatically.
-          </div>
+          {!globalApiKey && (
+            <div style={{ background: '#FFF7ED', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#C2410C' }}>
+              ⚠ Save your AiSynergy API Key in the field above before adding campaigns this way.
+            </div>
+          )}
           <div>
-            <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5 }}>AiSynergy API Key</label>
-            <input value={apiKey} onChange={e => { setApiKey(e.target.value); setFetchedParams(null) }} placeholder="Your API key from AiSynergy dashboard"
+            <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>Template / Campaign Name</label>
+            <input value={tplName} onChange={e => { setTplName(e.target.value); setReady(false) }}
+              placeholder="e.g. mediflow_vaccine_confirmation"
               style={{ width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff' }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5 }}>Campaign Name (exact name from AiSynergy)</label>
-            <input value={tplName} onChange={e => { setTplName(e.target.value); setFetchedParams(null) }} placeholder="e.g. mediflow_vaccine_confirmation"
-              style={{ width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff' }} />
-          </div>
-          <div>
-            <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5 }}>Number of Params in Template</label>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="number" min="1" max="10" value={paramCount} onChange={e => { setParamCount(e.target.value); setFetchedParams(null) }}
+            <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>Number of Params</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <input type="number" min="1" max="10" value={paramCount} onChange={e => { setParamCount(e.target.value); setReady(false) }}
                 style={{ width: 80, padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', background: '#fff' }} />
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>e.g. if template has {`{{1}} {{2}} {{3}}`}, enter 3</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>e.g. if template has {'{{1}} {{2}} {{3}}'}, enter 3</span>
             </div>
           </div>
-          <button type="button" onClick={handleFetchTemplate} disabled={fetching} style={{
+          <button type="button" onClick={handleUseName} style={{
             padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--teal)',
             color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', alignSelf: 'flex-start'
-          }}>{fetching ? 'Building…' : '✓ Use This Template'}</button>
-          {fetchedParams && (
+          }}>✓ Use This Template</button>
+          {ready && (
             <div style={{ background: '#E6F7F5', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#0B9E8A' }}>
-              ✅ <strong>{tplName}</strong> ready · {paramCount} param{paramCount !== '1' ? 's' : ''} · Save campaign below
+              ✅ <strong>{tplName}</strong> ready · {paramCount} params · Click Save Campaign below
             </div>
           )}
         </div>
       )}
 
-      {preview && tab === 'curl' && (
-        <div style={{ background: '#E6F7F5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0B9E8A', lineHeight: 1.8 }}>
-          ✅ cURL parsed · Campaign: <strong>{preview.campaignName}</strong> · {preview.paramCount} param{preview.paramCount !== 1 ? 's' : ''}
-          {preview.hasMedia && ' · includes media'}
+      {/* cURL tab */}
+      {tab === 'curl' && (
+        <div>
+          <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Paste full cURL from AiSynergy → Campaigns → your campaign → API
+          </label>
+          <textarea value={curl} onChange={e => handleCurlChange(e.target.value)}
+            placeholder={`curl -X POST -H "Content-Type: application/json" -d '{"apiKey":"...","campaignName":"...",...}' https://backend.api-wa.co/campaign/aisynergy/api/v2`}
+            style={{ width: '100%', minHeight: 110, padding: '10px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 11, fontFamily: 'monospace', background: '#fff', resize: 'vertical', lineHeight: 1.6, boxSizing: 'border-box' }} />
+          {preview && (
+            <div style={{ background: '#E6F7F5', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#0B9E8A', marginTop: 8 }}>
+              ✅ Parsed · Campaign: <strong>{preview.campaignName}</strong> · {preview.paramCount} params{preview.hasMedia ? ' · media' : ''}
+            </div>
+          )}
         </div>
       )}
 
@@ -189,7 +177,7 @@ function CampaignAdder({ onAdd }) {
           padding: '9px 20px', borderRadius: 9, border: 'none', background: 'var(--teal)',
           color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif'
         }}>Save Campaign</button>
-        <button type="button" onClick={() => { setOpen(false); setName(''); setCurl(''); setPreview(null); setErr(''); setApiKey(''); setTplName(''); setFetchedParams(null); setTab('curl'); setParamCount('3') }} style={{
+        <button type="button" onClick={reset} style={{
           padding: '9px 16px', borderRadius: 9, border: '1.5px solid var(--border)',
           background: '#fff', color: 'var(--slate)', fontSize: 13, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif'
         }}>Cancel</button>
@@ -293,6 +281,7 @@ export default function Settings() {
     clinicStart:       '09:00',
     clinicEnd:         '20:00',
     whatsappCampaigns: [],
+    aisynergyApiKey: '',
     lateCheckinPenalty: '0',
     vaccinationReminderDays: '7,3,1',
   })
@@ -313,6 +302,7 @@ export default function Settings() {
         clinicStart:       profile.clinicStart       || '09:00',
         clinicEnd:         profile.clinicEnd         || '20:00',
         whatsappCampaigns: profile.whatsappCampaigns || [],
+        aisynergyApiKey:    profile.aisynergyApiKey    || '',
         lateCheckinPenalty: profile.lateCheckinPenalty || '0',
         vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
       }))
@@ -421,6 +411,15 @@ export default function Settings() {
             MediFlow reads the API key and campaign settings directly from the cURL — no manual configuration needed.
           </div>
 
+          {/* Global API Key */}
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>AiSynergy API Key (Global)</label>
+            <input value={form.aisynergyApiKey || ''} onChange={setF('aisynergyApiKey')}
+              placeholder="Paste your AiSynergy API key — shared across all campaigns"
+              style={{ width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff' }} />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Save Settings after entering your key. Then use "Template Name" tab to add campaigns without pasting cURL each time.</div>
+          </div>
+
           <div style={{ background: '#F0F9FF', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: '#0369A1', lineHeight: 1.9 }}>
             <strong>Purpose codes:</strong><br />
             <code>bill_generated</code> — sent when a patient bill is created<br />
@@ -514,7 +513,7 @@ export default function Settings() {
             )
           })}
 
-          <CampaignAdder onAdd={async newC => {
+          <CampaignAdder globalApiKey={form.aisynergyApiKey} onAdd={async newC => {
             const updated = [...(form.whatsappCampaigns || []), { ...newC, enabled: true }]
             setForm(f => ({ ...f, whatsappCampaigns: updated }))
             // Save immediately to Firestore so it persists without clicking Save Settings
