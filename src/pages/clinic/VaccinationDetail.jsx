@@ -10,7 +10,9 @@ import {
   DEFAULT_VACCINE_SCHEDULE, getDueDate,
   scheduleVaccinationReminders
 } from '../../firebase/vaccinationDb'
-import { sendWhatsApp } from '../../firebase/db'
+import { sendCampaign } from '../../firebase/whatsapp'
+import { doc, setDoc } from 'firebase/firestore'
+import { db } from '../../firebase/config'
 
 const iStyle = { width: '100%', padding: '9px 13px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', outline: 'none', background: 'var(--surface)', color: 'var(--navy)', boxSizing: 'border-box' }
 const lStyle = { fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }
@@ -29,21 +31,38 @@ function formatDate(str) {
   return new Date(str).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// WA status badge
+function WaBadge({ label, status }) {
+  const styles = {
+    sent:    { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0' },
+    failed:  { bg: '#FEF2F2', color: '#DC2626', border: '#FECACA' },
+    pending: { bg: '#FFFBEB', color: '#D97706', border: '#FCD34D' },
+  }
+  const s = styles[status] || styles.pending
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 20, fontSize: 9, fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
+      📱 {label} {status === 'sent' ? '✓' : status === 'failed' ? '✗' : '—'}
+    </span>
+  )
+}
+
 export default function VaccinationDetail() {
   const { id } = useParams()
   const isNew  = id === 'new'
   const { user, profile } = useAuth()
   const navigate = useNavigate()
 
-  const [child,    setChild]    = useState(null)
-  const [loading,  setLoading]  = useState(!isNew)
-  const [saving,   setSaving]   = useState(false)
-  const [toast,    setToast]    = useState(null)
-  const [editMode, setEditMode] = useState(isNew)
-  const [markModal,  setMarkModal]  = useState(null)
+  const [child,      setChild]      = useState(null)
+  const [loading,    setLoading]    = useState(!isNew)
+  const [saving,     setSaving]     = useState(false)
+  const [toast,      setToast]      = useState(null)
+  const [editMode,   setEditMode]   = useState(isNew)
+  const [markModal,  setMarkModal]  = useState(null)   // { vaccine }
   const [markForm,   setMarkForm]   = useState({ givenDate: new Date().toISOString().split('T')[0], batchNo: '', notes: '', givenBy: '' })
   const [activeTab,  setActiveTab]  = useState('schedule')
-  const [waParams,   setWaParams]   = useState([]) // editable WhatsApp params
+  const [waParams,   setWaParams]   = useState([])     // editable WA params in modal
+  const [skipWa,     setSkipWa]     = useState(false)  // skip WA toggle in modal
+  const [resending,  setResending]  = useState(null)   // vaccineId being resent
 
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({ childName: '', dob: '', gender: '', guardianName: '', motherPhone: '', fatherPhone: '', bloodGroup: '', notes: '' })
@@ -80,6 +99,36 @@ export default function VaccinationDetail() {
     setSaving(false)
   }
 
+  // Send WA for a vaccine and return { motherStatus, fatherStatus }
+  async function sendVaccineWa(vaccineId, vaccineName, params) {
+    const campaigns = profile?.whatsappCampaigns || []
+    const phones = {
+      mother: child?.motherPhone || null,
+      father: child?.fatherPhone || null,
+    }
+    const results = { mother: null, father: null }
+    for (const [who, phone] of Object.entries(phones)) {
+      if (!phone) continue
+      try {
+        const res = await sendCampaign(campaigns, 'vaccine_given', phone, params)
+        results[who] = res?.ok ? 'sent' : 'failed'
+      } catch { results[who] = 'failed' }
+    }
+    return results
+  }
+
+  // Save WA status onto the vaccine record in Firestore
+  async function saveWaStatus(vaccineId, waStatus) {
+    try {
+      const existing = child?.vaccines?.[vaccineId] || {}
+      await setDoc(
+        doc(db, 'centres', user.uid, 'vaccination', id),
+        { vaccines: { [vaccineId]: { ...existing, waStatus } } },
+        { merge: true }
+      )
+    } catch (e) { console.warn('WA status save failed:', e) }
+  }
+
   async function handleMarkGiven() {
     if (!markModal) return
     setSaving(true)
@@ -89,20 +138,16 @@ export default function VaccinationDetail() {
       const updatedGiven = updatedChild?.vaccines || {}
       const nextVaccine  = DEFAULT_VACCINE_SCHEDULE.find(v => !(updatedGiven[v.id]?.givenDate))
 
-      // Send WhatsApp confirmation
-      const apiKey = profile?.aisynergyKey
-      const campaign = (profile?.whatsappCampaigns || []).find(c => c.purpose === 'vaccine_given' && c.enabled !== false)
-      if (apiKey && campaign) {
-        const phones = [child?.motherPhone, child?.fatherPhone].filter(Boolean)
-        const nextInfo = nextVaccine && child?.dob
-          ? `${nextVaccine.name} on ${formatDate(getDueDate(child.dob, nextVaccine.atMonths))}`
-          : 'All vaccines completed!'
-        for (const phone of phones) {
-          await sendWhatsApp(apiKey, phone, campaign.name, waParams.length ? waParams : [child?.childName || 'your child', markModal.vaccine.name, markForm.givenDate, nextInfo, profile?.centreName || 'Clinic'])
-        }
+      // Send WhatsApp (unless skipped)
+      const hasGivenCampaign = (profile?.whatsappCampaigns || []).some(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+      let waStatus = null
+      if (hasGivenCampaign && !skipWa) {
+        const results = await sendVaccineWa(markModal.vaccine.id, markModal.vaccine.name, waParams)
+        waStatus = results
+        await saveWaStatus(markModal.vaccine.id, results)
       }
 
-      // Schedule reminders (non-blocking — won't fail the save)
+      // Schedule reminders (non-blocking)
       if (nextVaccine && updatedChild) {
         try {
           const reminderDays = (profile?.vaccinationReminderDays || '7,3,1').split(',').map(Number).filter(Boolean)
@@ -112,12 +157,49 @@ export default function VaccinationDetail() {
 
       await load()
       setMarkModal(null)
-      setToast({ message: `${markModal.vaccine.name} marked as given ✓${apiKey && campaign ? ' · WhatsApp sent' : ''}`, type: 'success' })
+      setSkipWa(false)
+
+      // Toast with per-parent status
+      let toastMsg = `${markModal.vaccine.name} marked as given ✓`
+      if (waStatus) {
+        const parts = []
+        if (waStatus.mother) parts.push(`Mother ${waStatus.mother === 'sent' ? '✓' : '✗'}`)
+        if (waStatus.father) parts.push(`Father ${waStatus.father === 'sent' ? '✓' : '✗'}`)
+        if (parts.length) toastMsg += ` · WA: ${parts.join(', ')}`
+      } else if (skipWa) {
+        toastMsg += ' · WA skipped'
+      }
+      setToast({ message: toastMsg, type: 'success' })
     } catch (e) {
       console.error(e)
       setToast({ message: 'Failed to save. Try again.', type: 'error' })
     }
     setSaving(false)
+  }
+
+  // Resend WA for an already-given vaccine
+  async function handleResend(vaccine, record) {
+    setResending(vaccine.id)
+    try {
+      const nextV = DEFAULT_VACCINE_SCHEDULE.find(v => v.id !== vaccine.id && !(child?.vaccines?.[v.id]?.givenDate))
+      const params = [
+        child?.childName || '',
+        vaccine.name,
+        record.givenDate,
+        nextV && child?.dob ? `${nextV.name} on ${formatDate(getDueDate(child.dob, nextV.atMonths))}` : 'All vaccines completed!',
+        profile?.centreName || ''
+      ]
+      const results = await sendVaccineWa(vaccine.id, vaccine.name, params)
+      await saveWaStatus(vaccine.id, results)
+      await load()
+      const parts = []
+      if (results.mother) parts.push(`Mother ${results.mother === 'sent' ? '✓' : '✗'}`)
+      if (results.father) parts.push(`Father ${results.father === 'sent' ? '✓' : '✗'}`)
+      setToast({ message: `WA resent: ${parts.join(', ')}`, type: results.mother === 'sent' || results.father === 'sent' ? 'success' : 'error' })
+    } catch (e) {
+      setToast({ message: 'Resend failed', type: 'error' })
+    }
+    setResending(null)
   }
 
   async function handleUnmark(vaccineId) {
@@ -136,12 +218,29 @@ export default function VaccinationDetail() {
     { label: '5 Years', maxMonths: 999 },
   ]
 
-  const given = child?.vaccines || {}
+  const given    = child?.vaccines || {}
   const givenCount = Object.keys(given).filter(k => given[k]).length
-  const total = DEFAULT_VACCINE_SCHEDULE.length
-  const givenList = DEFAULT_VACCINE_SCHEDULE.filter(v => given[v.id]?.givenDate).map(v => ({ ...v, record: given[v.id] })).sort((a,b) => b.record.givenDate.localeCompare(a.record.givenDate))
+  const total    = DEFAULT_VACCINE_SCHEDULE.length
+  const givenList = DEFAULT_VACCINE_SCHEDULE
+    .filter(v => given[v.id]?.givenDate)
+    .map(v => ({ ...v, record: given[v.id] }))
+    .sort((a,b) => b.record.givenDate.localeCompare(a.record.givenDate))
   const nextVaccine = DEFAULT_VACCINE_SCHEDULE.find(v => !(given[v.id]?.givenDate))
-  const hasVaccineGivenCampaign = profile?.aisynergyKey && (profile?.whatsappCampaigns || []).some(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+  const hasGivenCampaign = (profile?.whatsappCampaigns || []).some(c => c.purpose === 'vaccine_given' && c.enabled !== false)
+
+  function openMarkModal(vaccine) {
+    setMarkModal({ vaccine })
+    setMarkForm({ givenDate: today, batchNo: '', notes: '', givenBy: '' })
+    setSkipWa(false)
+    const nextV = DEFAULT_VACCINE_SCHEDULE.find(v2 => v2.id !== vaccine.id && !(given[v2.id]?.givenDate))
+    setWaParams([
+      child?.childName || '',
+      vaccine.name,
+      today,
+      nextV && child?.dob ? `${nextV.name} on ${formatDate(getDueDate(child.dob, nextV.atMonths))}` : 'All vaccines completed!',
+      profile?.centreName || ''
+    ])
+  }
 
   if (loading) return <Layout title="Vaccination"><div style={{ padding: 60, textAlign: 'center', color: 'var(--muted)' }}>Loading…</div></Layout>
 
@@ -253,28 +352,24 @@ export default function VaccinationDetail() {
                           const isDone    = !!(record?.givenDate)
                           const dueDate   = child?.dob ? getDueDate(child.dob, vaccine.atMonths) : null
                           const isOverdue = dueDate && !isDone && dueDate < today
+                          const waStatus  = record?.waStatus
                           return (
                             <div key={vaccine.id} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, background: isDone ? '#F0FDF4' : isOverdue ? '#FEF2F2' : 'transparent' }}>
                               <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, background: isDone ? '#16A34A' : isOverdue ? '#FEE2E2' : 'var(--border)', color: isDone ? '#fff' : isOverdue ? '#991B1B' : 'var(--muted)' }}>{isDone ? '✓' : isOverdue ? '!' : '○'}</div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: 13, fontWeight: 600, color: isDone ? '#15803D' : 'var(--navy)' }}>{vaccine.name}</div>
                                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{isDone ? `Given on ${record.givenDate}${record.batchNo ? ` · Batch: ${record.batchNo}` : ''}${record.givenBy ? ` · By: ${record.givenBy}` : ''}` : dueDate ? `Due: ${dueDate}${isOverdue ? ' ⚠ Overdue' : ''}` : vaccine.description}</div>
+                                {isDone && waStatus && (
+                                  <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                                    {waStatus.mother && <WaBadge label="Mother" status={waStatus.mother} />}
+                                    {waStatus.father && <WaBadge label="Father" status={waStatus.father} />}
+                                  </div>
+                                )}
                               </div>
                               {isDone ? (
                                 <button onClick={() => handleUnmark(vaccine.id)} style={{ fontSize: 11, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 6 }}>✕ Undo</button>
                               ) : (
-                                <button onClick={() => {
-                                setMarkModal({ vaccine })
-                                setMarkForm({ givenDate: today, batchNo: '', notes: '', givenBy: '' })
-                                const nextV = DEFAULT_VACCINE_SCHEDULE.find(v2 => v2.id !== vaccine.id && !(given[v2.id]?.givenDate))
-                                setWaParams([
-                                  child?.childName || '',
-                                  vaccine.name,
-                                  today,
-                                  nextV && child?.dob ? `${nextV.name} on ${formatDate(getDueDate(child.dob, nextV.atMonths))}` : 'All vaccines completed!',
-                                  profile?.centreName || ''
-                                ])
-                              }} style={{ fontSize: 12, color: 'var(--teal)', background: 'var(--teal-light)', border: '1px solid var(--teal)', borderRadius: 8, padding: '5px 14px', cursor: 'pointer', fontWeight: 600, fontFamily: 'DM Sans, sans-serif' }}>Mark Given</button>
+                                <button onClick={() => openMarkModal(vaccine)} style={{ fontSize: 12, color: 'var(--teal)', background: 'var(--teal-light)', border: '1px solid var(--teal)', borderRadius: 8, padding: '5px 14px', cursor: 'pointer', fontWeight: 600, fontFamily: 'DM Sans, sans-serif' }}>Mark Given</button>
                               )}
                             </div>
                           )
@@ -291,19 +386,41 @@ export default function VaccinationDetail() {
                     <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--muted)', fontSize: 13 }}>No vaccines marked as given yet.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {givenList.map(v => (
-                        <div key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', background: '#F0FDF4', borderRadius: 12, border: '1px solid #BBF7D0' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 15, flexShrink: 0 }}>✓</div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: '#14532D' }}>{v.name}</div>
-                            <div style={{ fontSize: 12, color: '#166534', marginTop: 2 }}>Given on {formatDate(v.record.givenDate)}</div>
-                            {v.record.givenBy && <div style={{ fontSize: 11, color: '#15803D', marginTop: 1 }}>By: {v.record.givenBy}</div>}
-                            {v.record.batchNo && <div style={{ fontSize: 11, color: '#15803D' }}>Batch: {v.record.batchNo}</div>}
-                            {v.record.notes && <div style={{ fontSize: 11, color: '#166534', marginTop: 2, fontStyle: 'italic' }}>{v.record.notes}</div>}
+                      {givenList.map(v => {
+                        const waStatus = v.record?.waStatus
+                        const needsResend = hasGivenCampaign && (!waStatus || waStatus.mother === 'failed' || waStatus.father === 'failed' || (!waStatus.mother && !waStatus.father))
+                        return (
+                          <div key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', background: '#F0FDF4', borderRadius: 12, border: '1px solid #BBF7D0' }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 15, flexShrink: 0 }}>✓</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: '#14532D' }}>{v.name}</div>
+                              <div style={{ fontSize: 12, color: '#166534', marginTop: 2 }}>Given on {formatDate(v.record.givenDate)}</div>
+                              {v.record.givenBy && <div style={{ fontSize: 11, color: '#15803D', marginTop: 1 }}>By: {v.record.givenBy}</div>}
+                              {v.record.batchNo && <div style={{ fontSize: 11, color: '#15803D' }}>Batch: {v.record.batchNo}</div>}
+                              {v.record.notes && <div style={{ fontSize: 11, color: '#166534', marginTop: 2, fontStyle: 'italic' }}>{v.record.notes}</div>}
+                              {/* WA status badges */}
+                              {waStatus && (
+                                <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                  {waStatus.mother && <WaBadge label="Mother" status={waStatus.mother} />}
+                                  {waStatus.father && <WaBadge label="Father" status={waStatus.father} />}
+                                  {needsResend && (
+                                    <button onClick={() => handleResend(v, v.record)} disabled={resending === v.id} style={{ padding: '2px 10px', borderRadius: 20, border: '1px solid #FCD34D', background: '#FFFBEB', color: '#D97706', fontSize: 9, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                                      {resending === v.id ? '…' : '↻ Resend'}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {/* No WA status yet — show Send button */}
+                              {!waStatus && hasGivenCampaign && (
+                                <button onClick={() => handleResend(v, v.record)} disabled={resending === v.id} style={{ marginTop: 6, padding: '3px 10px', borderRadius: 20, border: '1px solid #BBF7D0', background: '#DCFCE7', color: '#15803D', fontSize: 9, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                                  {resending === v.id ? '…' : '📱 Send WA'}
+                                </button>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#15803D', background: '#DCFCE7', padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{v.description}</div>
                           </div>
-                          <div style={{ fontSize: 11, color: '#15803D', background: '#DCFCE7', padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{v.description}</div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -315,15 +432,16 @@ export default function VaccinationDetail() {
 
       {/* Mark as Given Modal */}
       {markModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 28, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: 28, maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>💉 Mark as Given</div>
             <div style={{ fontSize: 13, color: 'var(--teal)', marginBottom: 20 }}>{markModal.vaccine.name}</div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div><label style={lStyle}>Date Given *</label>
                 <div style={{ position: 'relative' }} onClick={e => e.currentTarget.querySelector('input').showPicker?.()}>
                   <input type="date" value={markForm.givenDate} max={today}
-                    onChange={e => setMarkForm(f => ({ ...f, givenDate: e.target.value }))}
+                    onChange={e => { setMarkForm(f => ({ ...f, givenDate: e.target.value })); setWaParams(p => { const n=[...p]; n[2]=e.target.value; return n }) }}
                     style={{ ...iStyle, cursor: 'pointer', colorScheme: 'light' }} />
                 </div>
               </div>
@@ -331,27 +449,39 @@ export default function VaccinationDetail() {
               <div><label style={lStyle}>Given By (optional)</label><input value={markForm.givenBy} onChange={e => setMarkForm(f => ({ ...f, givenBy: e.target.value }))} placeholder="e.g. Dr. Mehta" style={iStyle} /></div>
               <div><label style={lStyle}>Notes (optional)</label><input value={markForm.notes} onChange={e => setMarkForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any reaction, site, remarks" style={iStyle} /></div>
             </div>
-            {hasVaccineGivenCampaign && (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>📱 WhatsApp Message Preview</div>
-                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {['Child Name', 'Vaccine Name', 'Date Given', 'Next Vaccine Info', 'Centre Name'].map((label, i) => (
-                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <label style={{ fontSize: 10, color: '#15803D', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>Param {i+1}: {label}</label>
-                      <input
-                        value={waParams[i] || ''}
-                        onChange={e => setWaParams(p => { const n=[...p]; n[i]=e.target.value; return n })}
-                        style={{ ...iStyle, fontSize: 12, padding: '6px 10px', background: '#fff', border: '1px solid #BBF7D0' }}
-                      />
-                    </div>
-                  ))}
-                  <div style={{ fontSize: 10, color: '#15803D', marginTop: 2 }}>✎ You can edit any param before sending</div>
+
+            {/* WhatsApp section */}
+            {hasGivenCampaign && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📱 WhatsApp Message</div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: 'var(--muted)' }}>
+                    <input type="checkbox" checked={skipWa} onChange={e => setSkipWa(e.target.checked)} style={{ accentColor: 'var(--teal)' }} />
+                    Skip this time
+                  </label>
                 </div>
+                {!skipWa && (
+                  <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 10, color: '#15803D', marginBottom: 2 }}>Will send to: {[child?.motherPhone && 'Mother', child?.fatherPhone && 'Father'].filter(Boolean).join(' + ') || 'No phone numbers on file'}</div>
+                    {['Child Name', 'Vaccine Name', 'Date Given', 'Next Vaccine Info', 'Centre Name'].map((label, i) => (
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <label style={{ fontSize: 9, color: '#15803D', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>Param {i+1}: {label}</label>
+                        <input value={waParams[i] || ''} onChange={e => setWaParams(p => { const n=[...p]; n[i]=e.target.value; return n })}
+                          style={{ ...iStyle, fontSize: 12, padding: '6px 10px', background: '#fff', border: '1px solid #BBF7D0' }} />
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 10, color: '#15803D' }}>✎ Edit any param before confirming</div>
+                  </div>
+                )}
+                {skipWa && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 12px', background: 'var(--bg)', borderRadius: 8 }}>WhatsApp will not be sent. You can send from the Given tab later.</div>}
               </div>
             )}
+
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-              <Btn onClick={handleMarkGiven} disabled={saving} style={{ flex: 1, justifyContent: 'center' }}>{saving ? 'Saving…' : '✓ Confirm'}</Btn>
-              <Btn variant="ghost" onClick={() => setMarkModal(null)} style={{ flex: 1, justifyContent: 'center' }}>Cancel</Btn>
+              <Btn onClick={handleMarkGiven} disabled={saving} style={{ flex: 1, justifyContent: 'center' }}>
+                {saving ? 'Saving…' : hasGivenCampaign && !skipWa ? '✓ Confirm & Send WA' : '✓ Confirm'}
+              </Btn>
+              <Btn variant="ghost" onClick={() => { setMarkModal(null); setSkipWa(false) }} style={{ flex: 1, justifyContent: 'center' }}>Cancel</Btn>
             </div>
           </div>
         </div>
