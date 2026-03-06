@@ -24,6 +24,14 @@ function timeToMinutes(t) {
   return h * 60 + m
 }
 
+// Use local date to avoid UTC offset issues (IST = UTC+5:30)
+function toLocalDateStr(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 function minutesToTime(m) {
   const h = Math.floor(m / 60)
   const min = m % 60
@@ -235,9 +243,7 @@ export default function BookAppointment() {
     async function fetchBooked() {
       setSlotsLoading(true)
       try {
-        const dateStr = selDate.toISOString().split('T')[0]
-        const q = query(
-          collection(db, 'centres', centreId, 'appointments'),
+        const dateStr = toLocalDateStr(selDate)
           where('date', '==', dateStr),
           where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
         )
@@ -296,7 +302,7 @@ export default function BookAppointment() {
     if (submitting) return
     setSubmitting(true)
     try {
-      const dateStr     = selDate.toISOString().split('T')[0]
+      const dateStr     = toLocalDateStr(selDate)
       const fullPhone   = '91' + phone.trim()
       const docName     = selDoc?.name || selDoc || ''
       const centreName  = centre?.centreName || 'Clinic'
@@ -399,8 +405,7 @@ export default function BookAppointment() {
       if (e.message === 'SLOT_TAKEN') {
         alert('Sorry! This slot was just booked by someone else. Please go back and choose another slot.')
         // Refresh booked slots so UI reflects reality
-        const dateStr = selDate.toISOString().split('T')[0]
-        const snap = await getDocs(query(
+        const dateStr = toLocalDateStr(selDate)
           collection(db, 'centres', centreId, 'appointments'),
           where('date', '==', dateStr),
           where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
