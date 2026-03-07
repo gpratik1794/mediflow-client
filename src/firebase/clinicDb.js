@@ -2,7 +2,8 @@
 import { db } from './config'
 import {
   collection, doc, addDoc, getDoc, getDocs, updateDoc, setDoc,
-  query, where, orderBy, limit, serverTimestamp, setDoc as setDocAlias, deleteDoc
+  query, where, orderBy, limit, serverTimestamp, setDoc as setDocAlias, deleteDoc,
+  onSnapshot
 } from 'firebase/firestore'
 
 // ── PATIENTS (upsert — shared with diagnostic) ────────────────────────────────
@@ -65,6 +66,25 @@ export function getSessionFromTime(timeStr) {
   if (period === 'AM' && h === 12) h = 0
   // Morning = before 14:00 (2 PM), Evening = 14:00 onwards
   return h < 14 ? 'morning' : 'evening'
+}
+
+// ── REAL-TIME SUBSCRIPTION ───────────────────────────────────────────────────
+// Returns unsubscribe function. Calls callback with sorted appointments on every change.
+export function subscribeToAppointments(centreId, dateStr, callback) {
+  const ref = collection(db, 'centres', centreId, 'appointments')
+  const q   = query(ref, where('date', '==', dateStr))
+  return onSnapshot(q, snap => {
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const toMins = t => {
+      if (!t) return 999
+      const parts = t.split(' '); const hm = parts[0].split(':')
+      let h = Number(hm[0]); const min = Number(hm[1]); const period = parts[1]
+      if (period === 'PM' && h !== 12) h += 12
+      if (period === 'AM' && h === 12) h = 0
+      return h * 60 + min
+    }
+    callback(docs.sort((a, b) => toMins(a.appointmentTime) - toMins(b.appointmentTime)))
+  }, e => console.warn('[subscribeToAppointments]', e))
 }
 
 export async function getNextToken(centreId, dateStr, session = null) {

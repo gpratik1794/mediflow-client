@@ -267,7 +267,16 @@ export default function BookAppointment() {
   const duration    = parseInt(centre?.slotDuration || '30')
   const morningSlots = centre ? generateSlots(centre.morningStart || '09:00', centre.morningEnd || '13:00', duration) : []
   const eveningSlots = centre ? generateSlots(centre.eveningStart || '16:00', centre.eveningEnd || '20:00', duration) : []
-  const currentSlots = selSession === 'morning' ? morningSlots : eveningSlots
+
+  // Apply per-date slot override for selected doctor
+  const selDateStr = selDate ? selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0') : null
+  const selDocObj  = doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc))
+  const slotOverride = selDateStr && selDocObj?.slotOverrides?.[selDateStr]
+    ? selDocObj.slotOverrides[selDateStr]
+    : null
+
+  const applyOverride = (slots) => slotOverride ? slots.slice(0, slotOverride) : slots
+  const currentSlots = applyOverride(selSession === 'morning' ? morningSlots : eveningSlots)
 
   // ── Date chips ──
   const dateChips = (() => {

@@ -1,10 +1,10 @@
 // src/pages/clinic/ClinicDashboard.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { StatCard, Card, CardHeader, Btn, Badge, Empty } from '../../components/UI'
-import { getAppointments, getUpcomingFollowUps } from '../../firebase/clinicDb'
+import { getAppointments, getUpcomingFollowUps, subscribeToAppointments } from '../../firebase/clinicDb'
 import { format } from 'date-fns'
 
 const APPT_STATUS_COLOR = {
@@ -42,21 +42,28 @@ export default function ClinicDashboard() {
   const [appointments, setAppointments] = useState([])
   const [followUps, setFollowUps]       = useState([])
   const [loading, setLoading]           = useState(true)
+  const unsubRef = useRef(null)
   const today = format(new Date(), 'yyyy-MM-dd')
   const hour  = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
-  useEffect(() => { loadData() }, [user])
-
-  async function loadData() {
+  useEffect(() => {
+    if (!user) return
+    // Real-time appointments
+    if (unsubRef.current) unsubRef.current()
     setLoading(true)
-    const [appts, fups] = await Promise.all([
-      getAppointments(user.uid, today),
-      getUpcomingFollowUps(user.uid)
-    ])
-    setAppointments(appts)
-    setFollowUps(fups)
-    setLoading(false)
+    unsubRef.current = subscribeToAppointments(user.uid, today, data => {
+      setAppointments(data)
+      setLoading(false)
+    })
+    // Follow-ups are slow-changing — load once
+    getUpcomingFollowUps(user.uid).then(setFollowUps)
+    return () => { if (unsubRef.current) unsubRef.current() }
+  }, [user])
+
+  // Keep loadData for manual refresh button (follow-ups)
+  async function loadData() {
+    getUpcomingFollowUps(user.uid).then(setFollowUps)
   }
 
   const total      = appointments.length

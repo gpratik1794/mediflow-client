@@ -415,6 +415,192 @@ const SCHEDULE_TIME_OPTIONS = [
   { value: '23:00', label: '11:00 PM' },
 ]
 
+// ── Doctor Availability Component ────────────────────────────────────────────
+// Manages vacation dates and per-date slot count overrides
+// Shows a mini calendar — today onwards, vacation dates greyed, easy toggle
+function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
+  const today = new Date()
+  today.setHours(0,0,0,0)
+  const todayStr = today.toISOString().split('T')[0]
+
+  // Calendar state — which month are we viewing
+  const [calYear,  setCalYear]  = useState(today.getFullYear())
+  const [calMonth, setCalMonth] = useState(today.getMonth()) // 0-based
+  const [slotInput, setSlotInput] = useState({}) // { 'YYYY-MM-DD': '10' }
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa']
+
+  const unavail   = d.unavailableDates  || []
+  const overrides = d.slotOverrides     || {} // { 'YYYY-MM-DD': 8 }
+
+  function toStr(y, m, day) {
+    return `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+  }
+
+  function toggleDate(ds) {
+    const updated = [...doctors]
+    const isOff = unavail.includes(ds)
+    if (isOff) {
+      // Remove from unavailable, also remove any slot override for this date
+      const newOverrides = { ...overrides }
+      delete newOverrides[ds]
+      updated[i] = { ...d, unavailableDates: unavail.filter(x => x !== ds), slotOverrides: newOverrides }
+    } else {
+      updated[i] = { ...d, unavailableDates: [...unavail, ds].sort() }
+    }
+    onChange(updated)
+  }
+
+  function saveSlotOverride(ds, val) {
+    const num = parseInt(val)
+    const updated = [...doctors]
+    const newOverrides = { ...overrides }
+    if (!val || isNaN(num) || num <= 0) {
+      delete newOverrides[ds]
+    } else {
+      newOverrides[ds] = num
+    }
+    updated[i] = { ...d, slotOverrides: newOverrides }
+    onChange(updated)
+  }
+
+  // Build calendar days for current month
+  const firstDay = new Date(calYear, calMonth, 1).getDay()
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
+  const cells = []
+  for (let p = 0; p < firstDay; p++) cells.push(null)
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day)
+
+  const canGoPrev = calYear > today.getFullYear() || (calYear === today.getFullYear() && calMonth > today.getMonth())
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🏖️ Availability & Slot Overrides</div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.6 }}>
+        Click a date to mark as leave (red). Set slot override to limit bookings on a specific date.
+      </div>
+
+      {/* Month navigator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <button type="button" onClick={() => {
+          if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1) }
+          else setCalMonth(m => m-1)
+        }} disabled={!canGoPrev} style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--border)', background: 'none', cursor: canGoPrev ? 'pointer' : 'not-allowed', color: canGoPrev ? 'var(--navy)' : 'var(--border)', fontSize: 13 }}>‹</button>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)', flex: 1, textAlign: 'center' }}>{MONTHS[calMonth]} {calYear}</div>
+        <button type="button" onClick={() => {
+          if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1) }
+          else setCalMonth(m => m+1)
+        }} style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--navy)', fontSize: 13 }}>›</button>
+      </div>
+
+      {/* Day headers */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
+        {DAYS.map(day => (
+          <div key={day} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, color: 'var(--muted)', padding: '2px 0' }}>{day}</div>
+        ))}
+      </div>
+
+      {/* Calendar cells */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 14 }}>
+        {cells.map((day, idx) => {
+          if (!day) return <div key={idx} />
+          const ds      = toStr(calYear, calMonth, day)
+          const isPast  = ds < todayStr
+          const isOff   = unavail.includes(ds)
+          const hasOver = overrides[ds]
+          const isToday = ds === todayStr
+          return (
+            <button key={ds} type="button"
+              onClick={() => { if (!isPast) toggleDate(ds) }}
+              disabled={isPast}
+              style={{
+                aspectRatio: '1', borderRadius: 8, border: isToday ? '2px solid var(--teal)' : '1.5px solid transparent',
+                background: isPast ? 'var(--bg)' : isOff ? '#FEE2E2' : hasOver ? '#FEF3C7' : 'var(--surface)',
+                color: isPast ? 'var(--border)' : isOff ? '#DC2626' : 'var(--navy)',
+                cursor: isPast ? 'not-allowed' : 'pointer',
+                fontSize: 12, fontWeight: isToday ? 700 : 400,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexDirection: 'column', gap: 1, padding: '3px 0', lineHeight: 1,
+                boxShadow: isOff ? 'inset 0 0 0 1px #FECACA' : hasOver ? 'inset 0 0 0 1px #FCD34D' : 'none'
+              }}
+              title={isOff ? 'Leave — click to remove' : isPast ? 'Past date' : hasOver ? `Slot override: ${hasOver}` : 'Click to mark leave'}
+            >
+              {day}
+              {hasOver && !isOff && <span style={{ fontSize: 8, color: '#D97706', fontWeight: 700 }}>{hasOver}s</span>}
+              {isOff && <span style={{ fontSize: 8, color: '#DC2626' }}>off</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        {[['#FEE2E2','#DC2626','Leave / Off'], ['#FEF3C7','#D97706','Slot override'], ['var(--teal-light)','var(--teal)','Today']].map(([bg, col, label]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: bg, border: `1px solid ${col}` }} />
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Slot overrides — only for non-vacation future dates */}
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🎯 Slot Count Overrides</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.6 }}>
+          Override the default slot count for a specific date (e.g. allow fewer slots on a partial day).
+        </div>
+
+        {/* Existing overrides */}
+        {Object.keys(overrides).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {Object.entries(overrides).sort().map(([dt, count]) => (
+              <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 20, padding: '3px 10px' }}>
+                <span style={{ fontSize: 12, color: '#D97706', fontWeight: 600 }}>{dt}</span>
+                <span style={{ fontSize: 12, color: '#92400E' }}>→ {count} slots</span>
+                <button type="button" onClick={() => saveSlotOverride(dt, '')}
+                  style={{ background: 'none', border: 'none', color: '#D97706', cursor: 'pointer', padding: '0 2px', fontSize: 13 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add override */}
+        {(() => {
+          const [oDate, setODate] = useState('')
+          const [oSlots, setOSlots] = useState('')
+          return (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div>
+                <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</span>
+                <input type="date" min={todayStr}
+                  value={oDate} onChange={e => setODate(e.target.value)}
+                  style={{ ...sStyle, width: 150 }} />
+              </div>
+              <div>
+                <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Max Slots</span>
+                <input type="number" min="1" max="50" placeholder="e.g. 8"
+                  value={oSlots} onChange={e => setOSlots(e.target.value)}
+                  style={{ ...sStyle, width: 90 }} />
+              </div>
+              <button type="button"
+                onClick={() => {
+                  if (!oDate || !oSlots) return
+                  saveSlotOverride(oDate, oSlots)
+                  setODate(''); setOSlots('')
+                }}
+                disabled={!oDate || !oSlots}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: (oDate && oSlots) ? 'var(--teal)' : 'var(--border)', color: (oDate && oSlots) ? 'white' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: (oDate && oSlots) ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
+                Add Override
+              </button>
+            </div>
+          )
+        })()}
+      </div>
+    </div>
+  )
+}
+
 const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
 
 function DoctorsManager({ doctors, onChange }) {
@@ -535,46 +721,8 @@ function DoctorsManager({ doctors, onChange }) {
                   placeholder="10-digit mobile number" maxLength={10} />
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Used to send daily schedule notifications to this doctor.</div>
               </div>
-              {/* Availability — vacation dates */}
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🏖️ Unavailable Dates</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.6 }}>
-                  Mark dates when {d.name} is on leave. Patients cannot book on these dates.
-                </div>
-                {/* existing unavailable dates */}
-                {(d.unavailableDates || []).length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                    {(d.unavailableDates || []).sort().map(dt => (
-                      <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 20, padding: '3px 10px' }}>
-                        <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 500 }}>{dt}</span>
-                        <button type="button"
-                          onClick={() => {
-                            const updated = [...doctors]
-                            updated[i] = { ...d, unavailableDates: (d.unavailableDates || []).filter(x => x !== dt) }
-                            onChange(updated)
-                          }}
-                          style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '0 2px', fontSize: 13, lineHeight: 1 }}>✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* add date picker */}
-                <input type="date"
-                  min={new Date().toISOString().split('T')[0]}
-                  style={{ ...sStyle, maxWidth: 180 }}
-                  onChange={e => {
-                    const val = e.target.value
-                    if (!val) return
-                    const existing = d.unavailableDates || []
-                    if (existing.includes(val)) return
-                    const updated = [...doctors]
-                    updated[i] = { ...d, unavailableDates: [...existing, val].sort() }
-                    onChange(updated)
-                    e.target.value = ''
-                  }}
-                />
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>Select a date to add it. Click ✕ to remove.</div>
-              </div>
+              {/* Availability — vacation dates + slot overrides */}
+              <DoctorAvailability doctor={d} doctorIndex={i} doctors={doctors} onChange={onChange} />
             </div>
           )}
         </div>

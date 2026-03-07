@@ -78,13 +78,19 @@ export default function AppointmentDetail() {
         if (penalty > 0) {
           try {
             const allToday = await getAppointments(user.uid, appt.date)
-            const skippedPast = allToday.filter(a =>
+            // Only count patients who actually checked in (waiting/in-consultation/done)
+            // Scheduled patients who haven't arrived don't count against late patient
+            const checkedIn = allToday.filter(a =>
               a.id !== appt.id &&
-              a.tokenNumber > appt.tokenNumber &&
-              (a.status === 'in-consultation' || a.status === 'done')
+              ['waiting', 'in-consultation', 'done'].includes(a.status)
+            )
+            const skippedPast = checkedIn.filter(a =>
+              a.tokenNumber > appt.tokenNumber
             ).length
             if (skippedPast > 0) {
-              const maxToken = Math.max(...allToday.filter(a => a.status !== 'cancelled').map(a => a.tokenNumber))
+              const maxToken = checkedIn.length > 0
+                ? Math.max(...checkedIn.map(a => a.tokenNumber))
+                : appt.tokenNumber
               const newPosition = maxToken + penalty
               await updateAppointment(user.uid, id, {
                 status: 'waiting', tokenNumber: newPosition,

@@ -1,10 +1,10 @@
 // src/pages/clinic/Appointments.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Empty } from '../../components/UI'
-import { getAppointments, updateAppointment, saveSessionReport } from '../../firebase/clinicDb'
+import { getAppointments, updateAppointment, saveSessionReport, subscribeToAppointments, logActivity } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { format } from 'date-fns'
 
@@ -37,13 +37,24 @@ export default function Appointments() {
   const [reportSent, setReportSent]     = useState({ morning: false, evening: false })
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  useEffect(() => { if (user) load() }, [user])
+  const unsubRef = useRef(null)
 
-  async function load() {
+  useEffect(() => {
+    if (!user) return
     setLoading(true)
+    // Unsubscribe previous listener
+    if (unsubRef.current) unsubRef.current()
+    unsubRef.current = subscribeToAppointments(user.uid, today, data => {
+      setAppointments(data)
+      setLoading(false)
+    })
+    return () => { if (unsubRef.current) unsubRef.current() }
+  }, [user])
+
+  // Keep load() for session report re-fetch compatibility
+  async function load() {
     const data = await getAppointments(user.uid, today)
     setAppointments(data)
-    setLoading(false)
   }
 
   async function quickStatus(e, apptId, status) {
