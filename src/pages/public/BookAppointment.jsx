@@ -190,6 +190,7 @@ export default function BookAppointment() {
 
   // Slots
   const [bookedSlots, setBookedSlots] = useState([])
+  const [dateBookedCounts, setDateBookedCounts] = useState({}) // { 'YYYY-MM-DD': { morning: N, evening: N } }
   const [selSlot, setSelSlot]   = useState(null)
   const [slotsLoading, setSlotsLoading] = useState(false)
 
@@ -263,6 +264,45 @@ export default function BookAppointment() {
     fetchBooked()
   }, [selDate, centreId])
 
+  // ── Load booked counts for all 14 date chips when doctor/centre changes ──
+  useEffect(() => {
+    if (!centreId || !selDoc) return
+    async function fetchDateCounts() {
+      const today = new Date(); today.setHours(0,0,0,0)
+      const dates = []
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(today); d.setDate(today.getDate() + i)
+        dates.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'))
+      }
+      try {
+        // Batch: one query per date would be too many — query the whole 14-day window
+        const startDs = dates[0]; const endDs = dates[dates.length - 1]
+        const q = query(
+          collection(db, 'centres', centreId, 'appointments'),
+          where('date', '>=', startDs),
+          where('date', '<=', endDs),
+          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
+        )
+        const snap = await getDocs(q)
+        const counts = {}
+        snap.docs.forEach(doc => {
+          const { date, appointmentTime } = doc.data()
+          if (!date || !appointmentTime) return
+          if (!counts[date]) counts[date] = { morning: 0, evening: 0 }
+          // Determine session from time
+          const parts = appointmentTime.split(' ')
+          const period = parts[1]
+          const h = parseInt(parts[0].split(':')[0])
+          const hour24 = period === 'PM' && h !== 12 ? h + 12 : (period === 'AM' && h === 12 ? 0 : h)
+          if (hour24 < 14) counts[date].morning++
+          else counts[date].evening++
+        })
+        setDateBookedCounts(counts)
+      } catch (e) { console.warn('fetchDateCounts:', e) }
+    }
+    fetchDateCounts()
+  }, [centreId, selDoc])
+
   // ── Derived slot lists ──
   const duration    = parseInt(centre?.slotDuration || '30')
   const morningSlots = centre ? generateSlots(centre.morningStart || '09:00', centre.morningEnd || '13:00', duration) : []
@@ -275,8 +315,26 @@ export default function BookAppointment() {
     ? selDocObj.slotOverrides[selDateStr]
     : null
 
-  const applyOverride = (slots) => slotOverride ? slots.slice(0, slotOverride) : slots
-  const currentSlots = applyOverride(selSession === 'morning' ? morningSlots : eveningSlots)
+  // Per-session override: { morning: 5, evening: 'off'|'all'|N }
+  const getSessionOverride = (sess) => {
+    const cfg = selDateStr && selDocObj?.slotOverrides?.[selDateStr]
+    if (!cfg) return null
+    const v = cfg[sess]
+    if (!v || v === 'all') return null
+    if (v === 'off') return 'off'
+    return parseInt(v) || null
+  }
+  const morningOverride = getSessionOverride('morning')
+  const eveningOverride = getSessionOverride('evening')
+  const applyOverride = (slots, override) => {
+    if (override === 'off') return []
+    if (override) return slots.slice(0, override)
+    return slots
+  }
+  const currentSlots = applyOverride(
+    selSession === 'morning' ? morningSlots : eveningSlots,
+    selSession === 'morning' ? morningOverride : eveningOverride
+  )
 
   // ── Date chips ──
   const dateChips = (() => {
@@ -291,7 +349,15 @@ export default function BookAppointment() {
       const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
       const isDoctorOff = unavailDates.includes(ds)
       const isWeeklyOff = weeklyOff.includes(d.getDay())
-      chips.push({ date: d, off: isWeeklyOff || isDoctorOff, reason: isDoctorOff ? 'Leave' : isWeeklyOff ? 'Off' : null })
+      // Slot availability for this date
+      const overrideCfg = selDocObj?.slotOverrides?.[ds]
+      const mOverride = overrideCfg?.morning; const eOverride = overrideCfg?.evening
+      const mTotal = mOverride === 'off' ? 0 : (mOverride && mOverride !== 'all' ? Math.min(parseInt(mOverride)||morningSlots.length, morningSlots.length) : morningSlots.length)
+      const eTotal = eOverride === 'off' ? 0 : (eOverride && eOverride !== 'all' ? Math.min(parseInt(eOverride)||eveningSlots.length, eveningSlots.length) : eveningSlots.length)
+      const totalSlots = mTotal + eTotal
+      const booked = dateBookedCounts[ds] ? (dateBookedCounts[ds].morning + dateBookedCounts[ds].evening) : 0
+      const available = Math.max(0, totalSlots - booked)
+      chips.push({ date: d, off: isWeeklyOff || isDoctorOff, reason: isDoctorOff ? 'Leave' : isWeeklyOff ? 'Off' : null, available, totalSlots })
     }
     return chips
   })()
@@ -672,7 +738,14 @@ export default function BookAppointment() {
                     <div style={{ fontSize: 10, fontWeight: 600, color: on ? 'rgba(255,255,255,.8)' : '#8FA3B0', textTransform: 'uppercase' }}>{DAYS[date.getDay()]}</div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: on ? 'white' : off ? '#8FA3B0' : '#0D2B3E', lineHeight: 1.1 }}>{date.getDate()}</div>
                     <div style={{ fontSize: 10, color: on ? 'rgba(255,255,255,.8)' : '#8FA3B0' }}>{MONTHS[date.getMonth()]}</div>
-                    {off && <div style={{ fontSize: 9, color: '#DC2626', fontWeight: 600, marginTop: 2 }}>{reason || 'Off'}</div>}
+                    {off
+                      ? <div style={{ fontSize: 9, color: '#DC2626', fontWeight: 600, marginTop: 2 }}>{reason || 'Off'}</div>
+                      : available === 0
+                        ? <div style={{ fontSize: 9, color: '#DC2626', fontWeight: 600, marginTop: 2 }}>Full</div>
+                        : available < totalSlots
+                          ? <div style={{ fontSize: 9, color: on ? 'rgba(255,255,255,0.85)' : '#D97706', fontWeight: 600, marginTop: 2 }}>{available} left</div>
+                          : null
+                    }
                   </div>
                 )
               })}
@@ -689,22 +762,33 @@ export default function BookAppointment() {
                 const morningPast = isToday && nowH >= morningEndH
                 const eveningPast = isToday && nowH >= eveningEndH
                 return [
-                  { key: 'morning', icon: '🌅', label: 'Morning', time: `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`, count: morningSlots.length, past: morningPast },
-                  { key: 'evening', icon: '🌆', label: 'Evening', time: `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`, count: eveningSlots.length, past: eveningPast },
-                ].map(sess => (
+                  (() => {
+                    const ds2 = selDate ? selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0') : null
+                    const bc = ds2 ? (dateBookedCounts[ds2] || { morning: 0, evening: 0 }) : { morning: 0, evening: 0 }
+                    const mAvail = morningOverride === 'off' ? 0 : Math.max(0, applyOverride(morningSlots, morningOverride).length - bc.morning)
+                    const eAvail = eveningOverride === 'off' ? 0 : Math.max(0, applyOverride(eveningSlots, eveningOverride).length - bc.evening)
+                    return [
+                      { key: 'morning', icon: '🌅', label: 'Morning', time: `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`, avail: mAvail, total: applyOverride(morningSlots, morningOverride).length, off: morningOverride === 'off', past: morningPast },
+                      { key: 'evening', icon: '🌆', label: 'Evening', time: `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`, avail: eAvail, total: applyOverride(eveningSlots, eveningOverride).length, off: eveningOverride === 'off', past: eveningPast },
+                    ]
+                  })().map(sess => (
                   <div key={sess.key}
                     style={{
-                      ...S.sessCard(selSession === sess.key && !sess.past),
-                      ...(sess.past ? { opacity: 0.45, cursor: 'not-allowed', border: '1.5px solid #E2E8F0', background: '#F8FAFC' } : {})
+                      ...S.sessCard(selSession === sess.key && !sess.past && !sess.off),
+                      ...((sess.past || sess.off || sess.avail === 0) ? { opacity: 0.45, cursor: 'not-allowed', border: '1.5px solid #E2E8F0', background: '#F8FAFC' } : {})
                     }}
-                    onClick={() => { if (!sess.past) { setSelSession(sess.key); setSelSlot(null) } }}
+                    onClick={() => { if (!sess.past && !sess.off && sess.avail > 0) { setSelSession(sess.key); setSelSlot(null) } }}
                   >
                     <div style={{ fontSize: 22, marginBottom: 5 }}>{sess.icon}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: sess.past ? '#8FA3B0' : '#0D2B3E' }}>{sess.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: (sess.past||sess.off) ? '#8FA3B0' : '#0D2B3E' }}>{sess.label}</div>
                     <div style={{ fontSize: 11, color: '#8FA3B0', marginTop: 2 }}>{sess.time}</div>
                     {sess.past
                       ? <div style={{ fontSize: 10, color: '#DC2626', fontWeight: 600, marginTop: 5 }}>Session over</div>
-                      : <div style={{ fontSize: 10, color: '#0B9E8A', fontWeight: 600, marginTop: 5 }}>{sess.count} slots</div>
+                      : sess.off
+                        ? <div style={{ fontSize: 10, color: '#DC2626', fontWeight: 600, marginTop: 5 }}>Closed today</div>
+                        : sess.avail === 0
+                          ? <div style={{ fontSize: 10, color: '#DC2626', fontWeight: 600, marginTop: 5 }}>Fully booked</div>
+                          : <div style={{ fontSize: 10, color: '#0B9E8A', fontWeight: 600, marginTop: 5 }}>{sess.avail} of {sess.total} left</div>
                     }
                   </div>
                 ))

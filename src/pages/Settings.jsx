@@ -431,8 +431,9 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
   const [calMonth, setCalMonth] = useState(today.getMonth()) // 0-based
   const [slotInput, setSlotInput] = useState({}) // { 'YYYY-MM-DD': '10' }
   // Slot override add form
-  const [oDate,  setODate]  = useState('')
-  const [oSlots, setOSlots] = useState('')
+  const [oDate,   setODate]   = useState('')
+  const [oSlots,  setOSlots]  = useState('all')
+  const [oSlotsE, setOSlotsE] = useState('all')
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa']
@@ -458,14 +459,17 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
     onChange(updated)
   }
 
-  function saveSlotOverride(ds, val) {
-    const num = parseInt(val)
+  function saveSlotOverride(ds, session, val) {
     const updated = [...doctors]
     const newOverrides = { ...overrides }
-    if (!val || isNaN(num) || num <= 0) {
-      delete newOverrides[ds]
+    const existing = newOverrides[ds] || {}
+    if (val === 'all') {
+      // remove the key if both sessions are 'all' (default)
+      const other = session === 'morning' ? existing.evening : existing.morning
+      if (!other || other === 'all') { delete newOverrides[ds] }
+      else { newOverrides[ds] = { ...existing, [session]: 'all' } }
     } else {
-      newOverrides[ds] = num
+      newOverrides[ds] = { ...existing, [session]: val === 'off' ? 'off' : parseInt(val) || 'all' }
     }
     updated[i] = { ...d, slotOverrides: newOverrides }
     onChange(updated)
@@ -514,7 +518,7 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
           const ds      = toStr(calYear, calMonth, day)
           const isPast  = ds < todayStr
           const isOff   = unavail.includes(ds)
-          const hasOver = overrides[ds]
+          const hasOver = overrides[ds] && (overrides[ds].morning !== undefined || overrides[ds].evening !== undefined)
           const isToday = ds === todayStr
           return (
             <button key={ds} type="button"
@@ -533,7 +537,7 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
               title={isOff ? 'Leave — click to remove' : isPast ? 'Past date' : hasOver ? `Slot override: ${hasOver}` : 'Click to mark leave'}
             >
               {day}
-              {hasOver && !isOff && <span style={{ fontSize: 8, color: '#D97706', fontWeight: 700 }}>{hasOver}s</span>}
+              {hasOver && !isOff && <span style={{ fontSize: 8, color: '#D97706', fontWeight: 700 }}>~</span>}
               {isOff && <span style={{ fontSize: 8, color: '#DC2626' }}>off</span>}
             </button>
           )
@@ -560,18 +564,28 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
         {/* Existing overrides */}
         {Object.keys(overrides).length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-            {Object.entries(overrides).sort().map(([dt, count]) => (
-              <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 20, padding: '3px 10px' }}>
-                <span style={{ fontSize: 12, color: '#D97706', fontWeight: 600 }}>{dt}</span>
-                <span style={{ fontSize: 12, color: '#92400E' }}>→ {count} slots</span>
-                <button type="button" onClick={() => saveSlotOverride(dt, '')}
-                  style={{ background: 'none', border: 'none', color: '#D97706', cursor: 'pointer', padding: '0 2px', fontSize: 13 }}>✕</button>
-              </div>
-            ))}
+            {Object.entries(overrides).sort().map(([dt, cfg]) => {
+              const mLabel = cfg.morning === 'off' ? 'Off' : cfg.morning === 'all' || !cfg.morning ? 'All' : `${cfg.morning}`
+              const eLabel = cfg.evening === 'off' ? 'Off' : cfg.evening === 'all' || !cfg.evening ? 'All' : `${cfg.evening}`
+              return (
+                <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 10, padding: '5px 10px' }}>
+                  <span style={{ fontSize: 12, color: '#92400E', fontWeight: 700 }}>{dt}</span>
+                  <span style={{ fontSize: 11, color: '#D97706' }}>🌅 {mLabel}</span>
+                  <span style={{ fontSize: 11, color: '#D97706' }}>🌆 {eLabel}</span>
+                  <button type="button" onClick={() => {
+                    const updated = [...doctors]
+                    const newOverrides = { ...overrides }
+                    delete newOverrides[dt]
+                    updated[i] = { ...d, slotOverrides: newOverrides }
+                    onChange(updated)
+                  }} style={{ background: 'none', border: 'none', color: '#D97706', cursor: 'pointer', padding: '0 2px', fontSize: 13 }}>✕</button>
+                </div>
+              )
+            })}
           </div>
         )}
 
-        {/* Add override */}
+        {/* Add override — per session */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
             <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</span>
@@ -579,21 +593,28 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
               value={oDate} onChange={e => setODate(e.target.value)}
               style={{ ...sStyle, width: 150 }} />
           </div>
-          <div>
-            <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Max Slots</span>
-            <input type="number" min="1" max="50" placeholder="e.g. 8"
-              value={oSlots} onChange={e => setOSlots(e.target.value)}
-              style={{ ...sStyle, width: 90 }} />
-          </div>
+          {['morning','evening'].map(sess => (
+            <div key={sess}>
+              <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>{sess === 'morning' ? '🌅 Morning' : '🌆 Evening'}</span>
+              <select value={sess === 'morning' ? oSlots : oSlotsE}
+                onChange={e => sess === 'morning' ? setOSlots(e.target.value) : setOSlotsE(e.target.value)}
+                style={{ ...sStyle, width: 110 }}>
+                <option value="all">All (default)</option>
+                <option value="off">Off (closed)</option>
+                {[1,2,3,4,5,6,8,10,12,15,20,25,30].map(n => <option key={n} value={n}>{n} slots</option>)}
+              </select>
+            </div>
+          ))}
           <button type="button"
             onClick={() => {
-              if (!oDate || !oSlots) return
-              saveSlotOverride(oDate, oSlots)
-              setODate(''); setOSlots('')
+              if (!oDate) return
+              if (oSlots !== 'all') saveSlotOverride(oDate, 'morning', oSlots)
+              if (oSlotsE !== 'all') saveSlotOverride(oDate, 'evening', oSlotsE)
+              setODate(''); setOSlots('all'); setOSlotsE('all')
             }}
-            disabled={!oDate || !oSlots}
-            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: (oDate && oSlots) ? 'var(--teal)' : 'var(--border)', color: (oDate && oSlots) ? 'white' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: (oDate && oSlots) ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
-            Add Override
+            disabled={!oDate}
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: oDate ? 'var(--teal)' : 'var(--border)', color: oDate ? 'white' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: oDate ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
+            Set Override
           </button>
         </div>
       </div>
