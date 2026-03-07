@@ -534,6 +534,46 @@ function DoctorsManager({ doctors, onChange }) {
                   placeholder="10-digit mobile number" maxLength={10} />
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Used to send daily schedule notifications to this doctor.</div>
               </div>
+              {/* Availability — vacation dates */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🏖️ Unavailable Dates</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.6 }}>
+                  Mark dates when {d.name} is on leave. Patients cannot book on these dates.
+                </div>
+                {/* existing unavailable dates */}
+                {(d.unavailableDates || []).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                    {(d.unavailableDates || []).sort().map(dt => (
+                      <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 20, padding: '3px 10px' }}>
+                        <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 500 }}>{dt}</span>
+                        <button type="button"
+                          onClick={() => {
+                            const updated = [...doctors]
+                            updated[i] = { ...d, unavailableDates: (d.unavailableDates || []).filter(x => x !== dt) }
+                            onChange(updated)
+                          }}
+                          style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '0 2px', fontSize: 13, lineHeight: 1 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* add date picker */}
+                <input type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  style={{ ...sStyle, maxWidth: 180 }}
+                  onChange={e => {
+                    const val = e.target.value
+                    if (!val) return
+                    const existing = d.unavailableDates || []
+                    if (existing.includes(val)) return
+                    const updated = [...doctors]
+                    updated[i] = { ...d, unavailableDates: [...existing, val].sort() }
+                    onChange(updated)
+                    e.target.value = ''
+                  }}
+                />
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>Select a date to add it. Click ✕ to remove.</div>
+              </div>
             </div>
           )}
         </div>

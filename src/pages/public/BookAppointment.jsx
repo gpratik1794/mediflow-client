@@ -177,6 +177,7 @@ export default function BookAppointment() {
   const [name, setName]         = useState('')
   const [phone, setPhone]       = useState('')
   const [age, setAge]           = useState('')
+  const [dob, setDob]           = useState('')
   const [gender, setGender]     = useState('')
 
   // Doctor
@@ -273,9 +274,15 @@ export default function BookAppointment() {
     const chips = []
     const today = new Date()
     const weeklyOff = centre?.weeklyOff || []
+    // Get selected doctor's unavailable dates
+    const selDocObj = doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc))
+    const unavailDates = selDocObj?.unavailableDates || []
     for (let i = 0; i < 14; i++) {
       const d = new Date(today); d.setDate(today.getDate() + i)
-      chips.push({ date: d, off: weeklyOff.includes(d.getDay()) })
+      const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+      const isDoctorOff = unavailDates.includes(ds)
+      const isWeeklyOff = weeklyOff.includes(d.getDay())
+      chips.push({ date: d, off: isWeeklyOff || isDoctorOff, reason: isDoctorOff ? 'Leave' : isWeeklyOff ? 'Off' : null })
     }
     return chips
   })()
@@ -329,12 +336,12 @@ export default function BookAppointment() {
         patientId = pSnap.docs[0].id
         // update last visit
         await updateDoc(doc(db, 'centres', centreId, 'patients', patientId), {
-          name: name.trim(), age: age || '', gender: gender || '',
+          name: name.trim(), age: age || '', gender: gender || '', dob: dob || '',
           lastClinicVisit: dateStr
         })
       } else {
         const newPat = await addDoc(collection(db, 'centres', centreId, 'patients'), {
-          name: name.trim(), phone: phone.trim(), age: age || '', gender: gender || '',
+          name: name.trim(), phone: phone.trim(), age: age || '', gender: gender || '', dob: dob || '',
           source: 'online_booking', lastClinicVisit: dateStr,
           createdAt: serverTimestamp()
         })
@@ -391,6 +398,7 @@ export default function BookAppointment() {
           phone:           phone.trim(),
           age:             age || '',
           gender:          gender || '',
+          dob:             dob || '',
           appointmentTime: selSlot,       // matches dashboard field name
           visitType:       'New Visit',
           tokenNumber,
@@ -536,9 +544,51 @@ export default function BookAppointment() {
                 <span style={S.label}>Full Name *</span>
                 <input style={S.input} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rajesh Sharma" />
               </div>
+
+              {/* DOB — inline dropdowns */}
+              <div style={{ marginBottom: 14 }}>
+                <span style={S.label}>Date of Birth <span style={{ color: '#8FA3B0', fontWeight: 400 }}>(optional — age auto-calculated)</span></span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {(() => {
+                    const MONTHS_LIST = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                    const parts = dob ? dob.split('-') : ['','','']
+                    const yr = parts[0], mo = parts[1] ? String(parseInt(parts[1])) : '', dy = parts[2] ? String(parseInt(parts[2])) : ''
+                    const maxDays = mo && yr ? new Date(parseInt(yr), parseInt(mo), 0).getDate() : 31
+                    const days = Array.from({length: maxDays}, (_,i) => i+1)
+                    const currYear = new Date().getFullYear()
+                    const years = Array.from({length: 100}, (_,i) => currYear - i)
+                    function handleDob(field, val) {
+                      const next = { yr: field==='yr' ? val : yr, mo: field==='mo' ? val : mo, dy: field==='dy' ? val : dy }
+                      if (next.yr && next.mo && next.dy) {
+                        const iso = `${next.yr}-${String(next.mo).padStart(2,'0')}-${String(next.dy).padStart(2,'0')}`
+                        setDob(iso)
+                        const calcAge = Math.floor((new Date() - new Date(iso)) / (365.25*24*60*60*1000))
+                        if (calcAge >= 0 && calcAge <= 120) setAge(String(calcAge))
+                      } else { setDob('') }
+                    }
+                    const selStyle = { ...S.input, paddingRight: 8, flex: 1, minWidth: 70 }
+                    return (<>
+                      <select style={{ ...selStyle, flex: '0 0 70px' }} value={dy} onChange={e => handleDob('dy', e.target.value)}>
+                        <option value="">Day</option>
+                        {days.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                      <select style={{ ...selStyle, flex: '1 1 100px' }} value={mo} onChange={e => handleDob('mo', e.target.value)}>
+                        <option value="">Month</option>
+                        {MONTHS_LIST.map((m,i) => <option key={i+1} value={i+1}>{m}</option>)}
+                      </select>
+                      <select style={{ ...selStyle, flex: '0 0 85px' }} value={yr} onChange={e => handleDob('yr', e.target.value)}>
+                        <option value="">Year</option>
+                        {years.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                      {age && <div style={{ padding: '9px 12px', borderRadius: 10, background: '#E6F7F5', color: '#0B9E8A', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{age}y</div>}
+                    </>)
+                  })()}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
                 <div style={{ flex: 1 }}>
-                  <span style={S.label}>Age</span>
+                  <span style={S.label}>Age <span style={{ color: '#8FA3B0', fontWeight: 400 }}>(if DOB unknown)</span></span>
                   <input style={S.input} type="number" value={age} onChange={e => setAge(e.target.value)} placeholder="35" min="1" max="120" />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -606,14 +656,14 @@ export default function BookAppointment() {
             <div style={S.cardSub}>Next 14 days · weekly off days are greyed out</div>
             {/* Date strip */}
             <div style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '2px 0 10px', WebkitOverflowScrolling: 'touch' }}>
-              {dateChips.map(({ date, off }, i) => {
+              {dateChips.map(({ date, off, reason }, i) => {
                 const on = selDate && date.toDateString() === selDate.toDateString()
                 return (
                   <div key={i} style={S.dateChip(on, off)} onClick={() => { if (!off) { setSelDate(date); setSelSlot(null) } }}>
                     <div style={{ fontSize: 10, fontWeight: 600, color: on ? 'rgba(255,255,255,.8)' : '#8FA3B0', textTransform: 'uppercase' }}>{DAYS[date.getDay()]}</div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: on ? 'white' : off ? '#8FA3B0' : '#0D2B3E', lineHeight: 1.1 }}>{date.getDate()}</div>
                     <div style={{ fontSize: 10, color: on ? 'rgba(255,255,255,.8)' : '#8FA3B0' }}>{MONTHS[date.getMonth()]}</div>
-                    {off && <div style={{ fontSize: 9, color: '#DC2626', fontWeight: 600, marginTop: 2 }}>Off</div>}
+                    {off && <div style={{ fontSize: 9, color: '#DC2626', fontWeight: 600, marginTop: 2 }}>{reason || 'Off'}</div>}
                   </div>
                 )
               })}
