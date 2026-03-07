@@ -37,8 +37,17 @@ export async function getAppointments(centreId, dateStr) {
   const ref = collection(db, 'centres', centreId, 'appointments')
   const q = query(ref, where('date', '==', dateStr))
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
-}
+  const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const timeToMins = t => {
+    if (!t) return 999
+    const [time, period] = t.split(' ')
+    let [h, m] = time.split(':').map(Number)
+    if (period === 'PM' && h !== 12) h += 12
+    if (period === 'AM' && h === 12) h = 0
+    return h * 60 + m
+  }
+  return docs.sort((a, b) => timeToMins(a.appointmentTime) - timeToMins(b.appointmentTime))
+}s
 
 export async function getNextToken(centreId, dateStr) {
   const appts = await getAppointments(centreId, dateStr)
