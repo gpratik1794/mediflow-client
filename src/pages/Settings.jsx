@@ -402,23 +402,56 @@ function CampaignTester({ campaigns, purpose, phone, centreName }) {
 
 // ── Doctors Manager ───────────────────────────────────────────────────────────
 
+const SCHEDULE_TIME_OPTIONS = [
+  { value: '19:00', label: '7:00 PM' },
+  { value: '19:30', label: '7:30 PM' },
+  { value: '20:00', label: '8:00 PM' },
+  { value: '20:30', label: '8:30 PM' },
+  { value: '21:00', label: '9:00 PM' },
+  { value: '21:30', label: '9:30 PM' },
+  { value: '22:00', label: '10:00 PM' },
+  { value: '22:30', label: '10:30 PM' },
+  { value: '23:00', label: '11:00 PM' },
+]
+
+const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
+
 function DoctorsManager({ doctors, onChange }) {
-  const [adding, setAdding] = useState(false)
-  const [draft, setDraft]   = useState({ name: '', degree: '', speciality: '', phone: '' })
-  const [err, setErr]       = useState('')
+  const [adding, setAdding]   = useState(false)
+  const [draft, setDraft]     = useState(EMPTY_DOCTOR)
+  const [expanded, setExpanded] = useState(null) // index of expanded doctor card
+  const [err, setErr]         = useState('')
 
   const iStyle = { width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)', outline: 'none' }
   const lStyle = { fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }
+  const sStyle = { ...iStyle, padding: '8px 10px' }
 
   function handleAdd() {
     if (!draft.name.trim()) { setErr('Doctor name is required'); return }
-    onChange([...doctors, { name: draft.name.trim(), degree: draft.degree.trim(), speciality: draft.speciality.trim(), phone: draft.phone.trim() }])
-    setDraft({ name: '', degree: '', speciality: '' })
+    onChange([...doctors, {
+      name: draft.name.trim(),
+      degree: draft.degree.trim(),
+      speciality: draft.speciality.trim(),
+      phone: draft.phone.trim(),
+      firstVisitFee: draft.firstVisitFee.trim(),
+      repeatVisitFee: draft.repeatVisitFee.trim(),
+      scheduleNotifyTime: draft.scheduleNotifyTime || '21:00',
+    }])
+    setDraft(EMPTY_DOCTOR)
     setAdding(false); setErr('')
   }
 
   function handleRemove(i) {
     onChange(doctors.filter((_, j) => j !== i))
+    if (expanded === i) setExpanded(null)
+  }
+
+  function feeLabel(d) {
+    if (!d.firstVisitFee && !d.repeatVisitFee) return null
+    const parts = []
+    if (d.firstVisitFee) parts.push(`New: ₹${d.firstVisitFee}`)
+    if (d.repeatVisitFee) parts.push(`Repeat: ₹${d.repeatVisitFee}`)
+    return parts.join(' · ')
   }
 
   return (
@@ -430,19 +463,79 @@ function DoctorsManager({ doctors, onChange }) {
       )}
 
       {doctors.map((d, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)' }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,var(--teal),var(--teal-dark,#087A6B))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
-            {d.name.charAt(d.name.lastIndexOf(' ') + 1)}
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{d.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-              {[d.degree, d.speciality].filter(Boolean).join(' · ')}
+        <div key={i} style={{ borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', overflow: 'hidden' }}>
+          {/* Doctor row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,var(--teal),var(--teal-dark,#087A6B))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
+              {d.name.charAt(d.name.lastIndexOf(' ') + 1)}
             </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{d.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                {[d.degree, d.speciality].filter(Boolean).join(' · ')}
+                {feeLabel(d) && <span style={{ marginLeft: 6, color: 'var(--teal)' }}>· {feeLabel(d)}</span>}
+              </div>
+            </div>
+            <button type="button" onClick={() => setExpanded(expanded === i ? null : i)} style={{ background: 'var(--bg)', border: '1.5px solid var(--border)', borderRadius: 8, color: 'var(--slate)', fontSize: 11, fontWeight: 600, padding: '5px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
+              {expanded === i ? '▲ Less' : '▼ Edit'}
+            </button>
+            <button type="button" onClick={() => handleRemove(i)} style={{ background: '#FEF2F2', border: 'none', borderRadius: 8, color: '#DC2626', fontSize: 11, fontWeight: 600, padding: '5px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
+              ✕
+            </button>
           </div>
-          <button type="button" onClick={() => handleRemove(i)} style={{ background: '#FEF2F2', border: 'none', borderRadius: 8, color: '#DC2626', fontSize: 11, fontWeight: 600, padding: '5px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
-            ✕ Remove
-          </button>
+          {/* Expanded doctor detail */}
+          {expanded === i && (
+            <div style={{ borderTop: '1.5px solid var(--border)', padding: '14px 16px', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Fees */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>💰 Consultation Fees</div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={lStyle}>First Visit Fee (₹)</span>
+                    <input style={sStyle} type="number" min="0"
+                      value={d.firstVisitFee || ''}
+                      onChange={e => { const updated = [...doctors]; updated[i] = { ...d, firstVisitFee: e.target.value }; onChange(updated) }}
+                      placeholder="e.g. 500" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={lStyle}>Repeat Visit Fee (₹)</span>
+                    <input style={sStyle} type="number" min="0"
+                      value={d.repeatVisitFee || ''}
+                      onChange={e => { const updated = [...doctors]; updated[i] = { ...d, repeatVisitFee: e.target.value }; onChange(updated) }}
+                      placeholder="e.g. 300" />
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
+                  These fees are shown as defaults when booking an appointment for this doctor. Receptionist can override at time of booking or mark as Free.
+                </div>
+              </div>
+              {/* Schedule notification time */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📅 Daily Schedule Notification</div>
+                <div>
+                  <span style={lStyle}>Send tomorrow's schedule at</span>
+                  <select style={sStyle}
+                    value={d.scheduleNotifyTime || '21:00'}
+                    onChange={e => { const updated = [...doctors]; updated[i] = { ...d, scheduleNotifyTime: e.target.value }; onChange(updated) }}>
+                    {SCHEDULE_TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
+                    {d.name} will receive tomorrow's appointment schedule on WhatsApp at {SCHEDULE_TIME_OPTIONS.find(o => o.value === (d.scheduleNotifyTime || '21:00'))?.label || '9:00 PM'}.
+                    This includes all appointments booked before {SCHEDULE_TIME_OPTIONS.find(o => o.value === (d.scheduleNotifyTime || '21:00'))?.label || '9:00 PM'}.
+                  </div>
+                </div>
+              </div>
+              {/* WhatsApp number */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📱 WhatsApp Number</div>
+                <input style={sStyle}
+                  value={d.phone || ''}
+                  onChange={e => { const updated = [...doctors]; updated[i] = { ...d, phone: e.target.value.replace(/\D/g,'').slice(0,10) }; onChange(updated) }}
+                  placeholder="10-digit mobile number" maxLength={10} />
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Used to send daily schedule notifications to this doctor.</div>
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -463,9 +556,28 @@ function DoctorsManager({ doctors, onChange }) {
               <input style={iStyle} value={draft.speciality} onChange={e => setDraft(d => ({ ...d, speciality: e.target.value }))} placeholder="e.g. General Physician" />
             </div>
           </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <span style={lStyle}>First Visit Fee (₹)</span>
+              <input style={iStyle} type="number" min="0" value={draft.firstVisitFee} onChange={e => setDraft(d => ({ ...d, firstVisitFee: e.target.value }))} placeholder="e.g. 500" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <span style={lStyle}>Repeat Visit Fee (₹)</span>
+              <input style={iStyle} type="number" min="0" value={draft.repeatVisitFee} onChange={e => setDraft(d => ({ ...d, repeatVisitFee: e.target.value }))} placeholder="e.g. 300" />
+            </div>
+          </div>
           <div>
             <span style={lStyle}>WhatsApp Number (for schedule notifications)</span>
             <input style={iStyle} value={draft.phone} onChange={e => setDraft(d => ({ ...d, phone: e.target.value.replace(/\D/g,'').slice(0,10) }))} placeholder="10-digit mobile number" maxLength={10} />
+          </div>
+          <div>
+            <span style={lStyle}>Send daily schedule at</span>
+            <select style={iStyle} value={draft.scheduleNotifyTime} onChange={e => setDraft(d => ({ ...d, scheduleNotifyTime: e.target.value }))}>
+              {SCHEDULE_TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>
+              Doctor receives tomorrow's appointment list on WhatsApp at this time, including all bookings made before it.
+            </div>
           </div>
           {err && <div style={{ fontSize: 12, color: '#DC2626' }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
@@ -565,8 +677,6 @@ export default function Settings() {
     gst:               '0',
     gstNumber:         '',
     slotDuration:      '30',
-    clinicStart:       '09:00',
-    clinicEnd:         '20:00',
     whatsappCampaigns: [],
     aisynergyApiKey: '',
     lateCheckinPenalty: '0',
@@ -577,6 +687,7 @@ export default function Settings() {
     eveningStart: '16:00',
     eveningEnd:   '20:00',
     vaccinationReminderDays: '7,3,1',
+    fallbackNotifyNumber: '',
   })
 
   useEffect(() => {
@@ -592,8 +703,6 @@ export default function Settings() {
         gst:               profile.gst               || '0',
         gstNumber:         profile.gstNumber         || '',
         slotDuration:      profile.slotDuration      || '30',
-        clinicStart:       profile.clinicStart       || '09:00',
-        clinicEnd:         profile.clinicEnd         || '20:00',
         whatsappCampaigns: profile.whatsappCampaigns || [],
         aisynergyApiKey:    profile.aisynergyApiKey    || '',
         lateCheckinPenalty: profile.lateCheckinPenalty || '0',
@@ -604,6 +713,7 @@ export default function Settings() {
         eveningStart: profile.eveningStart || '16:00',
         eveningEnd:   profile.eveningEnd   || '20:00',
         vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
+        fallbackNotifyNumber: profile.fallbackNotifyNumber || '',
       }))
     }
   }, [profile])
@@ -627,7 +737,7 @@ export default function Settings() {
   }
 
   function handleSaveCentreInfo()          { saveFields({ centreName: form.centreName, ownerName: form.ownerName, phone: form.phone, city: form.city, address: form.address }) }
-  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, clinicStart: form.clinicStart, clinicEnd: form.clinicEnd, lateCheckinPenalty: form.lateCheckinPenalty, weeklyOff: form.weeklyOff, morningStart: form.morningStart, morningEnd: form.morningEnd, eveningStart: form.eveningStart, eveningEnd: form.eveningEnd }) }
+  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, lateCheckinPenalty: form.lateCheckinPenalty, weeklyOff: form.weeklyOff, morningStart: form.morningStart, morningEnd: form.morningEnd, eveningStart: form.eveningStart, eveningEnd: form.eveningEnd, fallbackNotifyNumber: form.fallbackNotifyNumber }) }
   function handleSaveBilling()             { saveFields({ gst: form.gst, gstNumber: form.gstNumber }) }
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
   function handleSaveDoctors()             { saveFields({ doctors: form.doctors }) }
@@ -687,11 +797,6 @@ export default function Settings() {
                 { value: '60', label: '60 minutes (1 slot/hour)' },
               ]}
             />
-            <div style={{ display: 'flex', gap: 12 }}>
-              <Input label="Clinic Start Time" type="time" value={form.clinicStart} onChange={setF('clinicStart')} />
-              <Input label="Clinic End Time"   type="time" value={form.clinicEnd}   onChange={setF('clinicEnd')} />
-            </div>
-
             {/* Morning / Evening session split */}
             <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>🌅 Morning Session</div>
@@ -766,6 +871,22 @@ export default function Settings() {
                   No weekly off set — clinic is open all 7 days
                 </div>
               )}
+            </div>
+            {/* Fallback WhatsApp Number */}
+            <div>
+              <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                Fallback WhatsApp Notification Number
+              </label>
+              <input
+                value={form.fallbackNotifyNumber}
+                onChange={e => setForm(f => ({ ...f, fallbackNotifyNumber: e.target.value.replace(/\D/g,'').slice(0,12) }))}
+                placeholder="e.g. 919876543210"
+                style={{ width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+                This number receives a WhatsApp notification whenever a patient books an appointment online and no doctor-specific number is available.
+                Enter in international format without + (e.g. 919876543210 for India).
+              </div>
             </div>
             <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
               {saving ? 'Saving…' : '💾 Save Clinic Settings'}
