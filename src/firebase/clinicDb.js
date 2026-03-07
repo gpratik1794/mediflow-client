@@ -253,3 +253,39 @@ export async function sendClinicWhatsApp(centreId, { phone, patientName, message
   console.log('[sendClinicWhatsApp] Use sendCampaign from whatsapp.js instead', { phone, patientName })
   return { ok: false, error: 'Use sendCampaign from whatsapp.js' }
 }
+
+// ── SESSION REPORTS ───────────────────────────────────────────────────────────
+
+export async function saveSessionReport(centreId, report) {
+  // report: { date, session, doctorName, total, newVisits, followUps,
+  //           collected, pending, free, noShows, cancellations,
+  //           slotsAvailable, slotsBooked, appointments[] }
+  const ref = collection(db, 'centres', centreId, 'sessionReports')
+  const docRef = await addDoc(ref, {
+    ...report,
+    savedAt: serverTimestamp()
+  })
+  return docRef.id
+}
+
+export async function getSessionReports(centreId, { from, to } = {}) {
+  let q = query(
+    collection(db, 'centres', centreId, 'sessionReports'),
+    orderBy('date', 'desc')
+  )
+  const snap = await getDocs(q)
+  let reports = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  if (from) reports = reports.filter(r => r.date >= from)
+  if (to)   reports = reports.filter(r => r.date <= to)
+  return reports
+}
+
+export async function getAppointmentsByRange(centreId, from, to) {
+  const snap = await getDocs(query(
+    collection(db, 'centres', centreId, 'appointments'),
+    where('date', '>=', from),
+    where('date', '<=', to),
+    orderBy('date', 'desc')
+  ))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}

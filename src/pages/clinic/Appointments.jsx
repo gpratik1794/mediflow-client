@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Empty } from '../../components/UI'
-import { getAppointments, updateAppointment } from '../../firebase/clinicDb'
+import { getAppointments, updateAppointment, saveSessionReport } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { format } from 'date-fns'
 
@@ -84,7 +84,13 @@ export default function Appointments() {
     const appts = getSessionAppts(sess)
     if (appts.length === 0) return false
     if (reportSent[sess]) return false
-    return true
+    return true  // visible — but may be disabled if not all done
+  }
+
+  function allDoneForSession(sess) {
+    const appts = getSessionAppts(sess)
+    if (appts.length === 0) return false
+    return appts.every(a => a.status === 'done' || a.status === 'cancelled')
   }
 
   async function handleSendReport() {
@@ -141,6 +147,23 @@ export default function Appointments() {
         )
       }
 
+      // Auto-save session report to Firestore
+      try {
+        await saveSessionReport(user.uid, {
+          date: today,
+          session: endSession,
+          doctorName: profile?.doctors?.[0]?.name || 'Doctor',
+          total: s.total,
+          newVisits: s.newV,
+          followUps: s.followUp,
+          collected: s.collection,
+          pending: s.pending,
+          freeCount: s.done - s.total,
+          waiting: s.waiting,
+          centreName: profile?.centreName || 'Clinic',
+        })
+      } catch (saveErr) { console.error('Report save failed:', saveErr) }
+
       setReportSent(prev => ({ ...prev, [endSession]: true }))
       setShowEndModal(false)
       alert(`✅ Session report sent for ${sessLabel} session!`)
@@ -170,25 +193,32 @@ export default function Appointments() {
     return matchFilter && matchSearch
   })
 
-  const sessAppts = getSessionAppts(currentSession)
-  const allDoneThisSession = sessAppts.length > 0 && sessAppts.every(a => a.status === 'done' || a.status === 'cancelled')
+  const sessAppts      = getSessionAppts(currentSession)
+  const allDone        = allDoneForSession(currentSession)
+  const canShow        = canEndSession(currentSession)
 
   return (
     <Layout
       title="Appointments"
       action={
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {canEndSession(currentSession) && (
-            <Btn
-              variant="ghost"
-              onClick={() => openEndModal(currentSession)}
+          {canShow && (
+            <button
+              onClick={() => { if (allDone) openEndModal(currentSession) }}
+              disabled={!allDone}
+              title={!allDone ? 'Mark all patients as Done before ending session' : ''}
               style={{
-                borderColor: allDoneThisSession ? 'var(--green)' : 'var(--border)',
-                color: allDoneThisSession ? 'var(--green)' : 'var(--slate)'
+                padding: '9px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                fontFamily: 'DM Sans, sans-serif', cursor: allDone ? 'pointer' : 'not-allowed',
+                border: `1.5px solid ${allDone ? 'var(--green)' : 'var(--border)'}`,
+                background: allDone ? 'var(--green-bg)' : 'var(--bg)',
+                color: allDone ? 'var(--green)' : 'var(--muted)',
+                opacity: allDone ? 1 : 0.6,
+                transition: 'all 0.2s'
               }}
             >
-              {allDoneThisSession ? '✓ End Session & Send Report' : '📋 Send Session Report'}
-            </Btn>
+              {allDone ? '✓ End Session & Send Report' : '📋 Send Session Report'}
+            </button>
           )}
           {reportSent[currentSession] && (
             <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600 }}>✓ Report sent</span>

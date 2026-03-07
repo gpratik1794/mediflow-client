@@ -28,6 +28,7 @@ import PrescriptionWriter from './pages/clinic/PrescriptionWriter'
 import PrescriptionDetail from './pages/clinic/PrescriptionDetail'
 import FollowUps          from './pages/clinic/FollowUps'
 import BookAppointment    from './pages/public/BookAppointment'
+import ClinicReports      from './pages/clinic/ClinicReports'
 import TokenDisplay       from './pages/public/TokenDisplay'
 
 function Protected({ children }) {
@@ -81,6 +82,7 @@ function AppRoutes() {
       <Route path="/clinic/prescription/new"      element={<Protected><PrescriptionWriter /></Protected>} />
       <Route path="/clinic/prescription/:id"      element={<Protected><PrescriptionDetail /></Protected>} />
       <Route path="/clinic/followups"             element={<Protected><FollowUps /></Protected>} />
+      <Route path="/clinic/reports"              element={<Protected><ClinicReports /></Protected>} />
 
       {/* Public booking — no auth required */}
       <Route path="/book/:centreId"    element={<BookAppointment />} />

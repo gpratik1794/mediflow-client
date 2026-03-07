@@ -34,6 +34,7 @@ function buildClinicNav(modules) {
     { section: 'Doctor' },
     { to: '/clinic/prescription/new', label: 'New Prescription', icon: '💊' },
     { section: 'Manage' },
+    { to: '/clinic/reports', label: 'Reports', icon: '📊' },
     { to: '/settings', label: 'Settings', icon: '⚙' }
   )
   return nav
@@ -51,6 +52,7 @@ function buildBothNav(modules) {
     nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
   }
   nav.push(
+    { to: '/clinic/reports', label: 'Reports', icon: '📊' },
     { section: 'Diagnostic' },
     { to: '/',       label: 'Lab Dashboard',  icon: '▦' },
     { to: '/visits', label: "Today's Visits", icon: '📋' },
