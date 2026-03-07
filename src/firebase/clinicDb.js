@@ -82,17 +82,12 @@ export async function getPatientAppointments(centreId, phone) {
 
 // ── PRESCRIPTIONS ────────────────────────────────────────────────────────────
 
-export async function getPrescriptions(centreId, patientPhone, months = 6) {
-  const cutoff = new Date()
-  cutoff.setMonth(cutoff.getMonth() - months)
-  const cutoffStr = cutoff.toISOString().split('T')[0]
+export async function getPrescriptions(centreId, patientPhone) {
   const ref = collection(db, 'centres', centreId, 'prescriptions')
-  // Use only single where to avoid composite index requirement — sort client-side
-  const q = query(ref, where('patientPhone', '==', patientPhone), limit(50))
+  const q = query(ref, where('patientPhone', '==', patientPhone), limit(100))
   const snap = await getDocs(q)
   return snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(p => p.date >= cutoffStr)
     .sort((a, b) => b.date?.localeCompare(a.date))
 }
 
