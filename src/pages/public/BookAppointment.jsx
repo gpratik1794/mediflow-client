@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  doc, getDoc, collection, query, where, getDocs,
+  doc, getDoc, onSnapshot, collection, query, where, getDocs,
   addDoc, updateDoc, runTransaction, serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../../firebase/config'
@@ -201,106 +201,112 @@ export default function BookAppointment() {
   const submittingRef           = useRef(false) // instant guard against double-clicks
 
   // ── Load centre profile ──
+  // refs for cleanup
+  const unsubProfileRef = useRef(null)
+  const unsubBookedRef  = useRef(null)
+  const unsubDateRef    = useRef(null)
+  const clientDataRef   = useRef(null) // hold client data for merging with live profile
+
   useEffect(() => {
-    async function load() {
+    if (!centreId) return
+    async function init() {
       try {
-        // Client info (centreName, centreType, aisynergyApiKey) lives in clients/{uid}
+        // Client info — load once (doesn't change during booking)
         const clientSnap = await getDoc(doc(db, 'clients', centreId))
         if (!clientSnap.exists()) { setNotFound(true); setLoading(false); return }
-        const clientData = clientSnap.data()
+        clientDataRef.current = clientSnap.data()
 
-        // Clinic settings (slots, timings, doctors, WA campaigns) live in centres/{uid}/profile/main
-        const profileSnap = await getDoc(doc(db, 'centres', centreId, 'profile', 'main'))
-        const profileData = profileSnap.exists() ? profileSnap.data() : {}
-
-        // Merge both — profile settings override client fields if overlap
-        const data = { ...clientData, ...profileData }
-        setCentre(data)
-
-        // Load doctors from subcollection if exists, fallback to profile.doctors array
-        const docsArr = data.doctors || []
-        setDoctors(docsArr)
-        if (docsArr.length > 0) setSelDoc(docsArr[0])
-
-        // Default date = today
-        const today = new Date()
-        const weeklyOff = data.weeklyOff || []
-        // Find first non-off day
-        let startDate = new Date(today)
-        for (let i = 0; i < 14; i++) {
-          const d = new Date(today); d.setDate(today.getDate() + i)
-          if (!weeklyOff.includes(d.getDay())) { startDate = d; break }
-        }
-        setSelDate(startDate)
+        // Profile — onSnapshot so slot overrides / unavailable dates update live
+        if (unsubProfileRef.current) unsubProfileRef.current()
+        unsubProfileRef.current = onSnapshot(
+          doc(db, 'centres', centreId, 'profile', 'main'),
+          (snap) => {
+            const profileData = snap.exists() ? snap.data() : {}
+            const data = { ...clientDataRef.current, ...profileData }
+            setCentre(data)
+            const docsArr = data.doctors || []
+            setDoctors(docsArr)
+            // Set default doctor only on first load
+            setSelDoc(prev => prev || (docsArr.length > 0 ? docsArr[0] : null))
+            // Set default date only on first load
+            setSelDate(prev => {
+              if (prev) return prev
+              const today = new Date()
+              const weeklyOff = data.weeklyOff || []
+              for (let i = 0; i < 14; i++) {
+                const d = new Date(today); d.setDate(today.getDate() + i)
+                if (!weeklyOff.includes(d.getDay())) return d
+              }
+              return today
+            })
+            setLoading(false)
+          },
+          (e) => { console.error(e); setNotFound(true); setLoading(false) }
+        )
       } catch (e) {
-        console.error(e); setNotFound(true)
+        console.error(e); setNotFound(true); setLoading(false)
       }
-      setLoading(false)
     }
-    load()
+    init()
+    return () => {
+      if (unsubProfileRef.current) unsubProfileRef.current()
+      if (unsubBookedRef.current)  unsubBookedRef.current()
+      if (unsubDateRef.current)    unsubDateRef.current()
+    }
   }, [centreId])
 
-  // ── Load booked slots when date/doctor/session changes ──
+  // ── Real-time booked slots for selected date ──
   useEffect(() => {
     if (!selDate || !centreId) return
-    async function fetchBooked() {
-      setSlotsLoading(true)
-      try {
-        const dateStr = toLocalDateStr(selDate)
-        const q = query(
-          collection(db, 'centres', centreId, 'appointments'),
-          where('date', '==', dateStr),
-          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
-        )
-        const snap = await getDocs(q)
-        const taken = snap.docs.map(d => d.data().appointmentTime).filter(Boolean)
-        setBookedSlots(taken)
-      } catch (e) {
-        console.error('fetchBooked:', e)
-        setBookedSlots([])
-      }
+    setSlotsLoading(true)
+    if (unsubBookedRef.current) unsubBookedRef.current()
+    const dateStr = toLocalDateStr(selDate)
+    const q = query(
+      collection(db, 'centres', centreId, 'appointments'),
+      where('date', '==', dateStr),
+      where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
+    )
+    unsubBookedRef.current = onSnapshot(q, (snap) => {
+      const taken = snap.docs.map(d => d.data().appointmentTime).filter(Boolean)
+      setBookedSlots(taken)
       setSlotsLoading(false)
-    }
-    fetchBooked()
+    }, (e) => {
+      console.error('bookedSlots:', e)
+      setBookedSlots([])
+      setSlotsLoading(false)
+    })
   }, [selDate, centreId])
 
-  // ── Load booked counts for all 14 date chips when doctor/centre changes ──
+  // ── Real-time booked counts for all 14 date chips ──
   useEffect(() => {
     if (!centreId || !selDoc) return
-    async function fetchDateCounts() {
-      const today = new Date(); today.setHours(0,0,0,0)
-      const dates = []
-      for (let i = 0; i < 14; i++) {
-        const d = new Date(today); d.setDate(today.getDate() + i)
-        dates.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'))
-      }
-      try {
-        // Batch: one query per date would be too many — query the whole 14-day window
-        // No status filter to avoid needing composite index — filter cancelled in JS
-        const startDs = dates[0]; const endDs = dates[dates.length - 1]
-        const q = query(
-          collection(db, 'centres', centreId, 'appointments'),
-          where('date', '>=', startDs),
-          where('date', '<=', endDs)
-        )
-        const snap = await getDocs(q)
-        const counts = {}
-        snap.docs.forEach(doc => {
-          const { date, appointmentTime, status } = doc.data()
-          if (!date || !appointmentTime || status === 'cancelled') return
-          if (!counts[date]) counts[date] = { morning: 0, evening: 0 }
-          // Determine session from time
-          const parts = appointmentTime.split(' ')
-          const period = parts[1]
-          const h = parseInt(parts[0].split(':')[0])
-          const hour24 = period === 'PM' && h !== 12 ? h + 12 : (period === 'AM' && h === 12 ? 0 : h)
-          if (hour24 < 14) counts[date].morning++
-          else counts[date].evening++
-        })
-        setDateBookedCounts(counts)
-      } catch (e) { console.warn('fetchDateCounts:', e) }
+    const today = new Date(); today.setHours(0,0,0,0)
+    const dates = []
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today); d.setDate(today.getDate() + i)
+      dates.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'))
     }
-    fetchDateCounts()
+    const startDs = dates[0]; const endDs = dates[dates.length - 1]
+    const q = query(
+      collection(db, 'centres', centreId, 'appointments'),
+      where('date', '>=', startDs),
+      where('date', '<=', endDs)
+    )
+    if (unsubDateRef.current) unsubDateRef.current()
+    unsubDateRef.current = onSnapshot(q, (snap) => {
+      const counts = {}
+      snap.docs.forEach(docSnap => {
+        const { date, appointmentTime, status } = docSnap.data()
+        if (!date || !appointmentTime || status === 'cancelled') return
+        if (!counts[date]) counts[date] = { morning: 0, evening: 0 }
+        const parts = appointmentTime.split(' ')
+        const period = parts[1]; const h = parseInt(parts[0].split(':')[0])
+        const hour24 = period === 'PM' && h !== 12 ? h + 12 : (period === 'AM' && h === 12 ? 0 : h)
+        if (hour24 < 14) counts[date].morning++
+        else counts[date].evening++
+      })
+      setDateBookedCounts(counts)
+    }, (e) => console.warn('dateBookedCounts:', e))
   }, [centreId, selDoc])
 
   // ── Derived slot lists ──
