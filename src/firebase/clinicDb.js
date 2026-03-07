@@ -289,3 +289,57 @@ export async function getAppointmentsByRange(centreId, from, to) {
   ))
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
+
+// ── ACTIVITY LOG ─────────────────────────────────────────────────────────────
+// Stored at centres/{uid}/activityLog
+// action examples: appt_created, appt_cancelled, appt_deleted,
+//   patient_edited, settings_saved, prescription_created, session_report_sent
+
+export async function logActivity(centreId, { action, label, detail = '', by = '' }) {
+  try {
+    await addDoc(collection(db, 'centres', centreId, 'activityLog'), {
+      action,        // machine key e.g. 'appt_cancelled'
+      label,         // human label e.g. 'Appointment Cancelled'
+      detail,        // extra info e.g. patient name, setting changed
+      by,            // user display name or email
+      timestamp: serverTimestamp(),
+    })
+  } catch (e) {
+    // Non-blocking — never let logging break main flow
+    console.warn('[logActivity] failed:', e)
+  }
+}
+
+export async function getActivityLog(centreId, limitCount = 100) {
+  const snap = await getDocs(query(
+    collection(db, 'centres', centreId, 'activityLog'),
+    orderBy('timestamp', 'desc'),
+    limit(limitCount)
+  ))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+// ── PATIENTS LIST ─────────────────────────────────────────────────────────────
+
+export async function getAllPatients(centreId) {
+  const snap = await getDocs(
+    query(collection(db, 'centres', centreId, 'patients'), orderBy('name', 'asc'))
+  )
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+// ── SEND PATIENT LIST EMAIL ───────────────────────────────────────────────────
+// Sends CSV of all patients to clinic owner's registered email via AiSynergy plain WA
+// (Email integration TBD — for now logs the request and returns ok)
+
+export async function sendPatientListEmail(centreId, ownerEmail, centreName) {
+  // Placeholder — wire to email service when ready
+  // Log the download request
+  await logActivity(centreId, {
+    action:  'patient_list_downloaded',
+    label:   'Patient List Downloaded',
+    detail:  `Requested export to ${ownerEmail}`,
+    by:      ownerEmail,
+  })
+  return { ok: true }
+}

@@ -6,7 +6,7 @@ import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Input, Toast, Empty } from '../../components/UI'
 import { getDoc, doc, collection, query, where, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase/config'
-import { updateAppointment, getPrescriptions, getAppointments, VITALS_FIELDS } from '../../firebase/clinicDb'
+import { updateAppointment, logActivity, getPrescriptions, getAppointments, VITALS_FIELDS } from '../../firebase/clinicDb'
 import WhatsAppLog from '../../components/WhatsAppLog'
 import { format } from 'date-fns'
 
@@ -20,6 +20,13 @@ const STATUS_COLORS = {
   'in-consultation': { bg: 'var(--teal-light)', color: 'var(--teal)' },
   done:      { bg: 'var(--green-bg)', color: 'var(--green)' },
   cancelled: { bg: 'var(--red-bg)', color: 'var(--red)' },
+}
+
+function maskPhone(phone) {
+  if (!phone) return ''
+  const p = String(phone).replace(/[^0-9]/g,'')
+  if (p.length < 6) return '••••••'
+  return p.slice(0, 2) + '••••••' + p.slice(-2)
 }
 
 export default function AppointmentDetail() {
@@ -93,6 +100,8 @@ export default function AppointmentDetail() {
         }
       }
       await updateAppointment(user.uid, id, { status: newStatus })
+    const labelMap = { done: 'Appointment Done', cancelled: 'Appointment Cancelled', 'in-consultation': 'In Consultation', waiting: 'Waiting' }
+    logActivity(user.uid, { action: 'appt_status_changed', label: labelMap[newStatus] || 'Status Changed', detail: appt?.patientName || id, by: user?.email || '' })
       setAppt(a => ({ ...a, status: newStatus }))
       setToast({ message: `Status → ${STATUS_LABELS[newStatus]}`, type: 'success' })
     } catch (e) {
@@ -258,7 +267,7 @@ export default function AppointmentDetail() {
               </div>
               {[
                 ['Name', appt.patientName],
-                ['Phone', appt.phone],
+                ['Phone', maskPhone(appt.phone)],
                 ['Age / Gender', `${appt.age}y · ${appt.gender}`],
                 ['Visit Type', appt.visitType],
                 ['Token', `#${appt.tokenNumber}`],

@@ -1,9 +1,10 @@
 // src/pages/Settings.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../utils/AuthContext'
 import Layout from '../components/Layout'
 import { Card, CardHeader, Input, Select, Btn, Toast } from '../components/UI'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { logActivity, getActivityLog, getAllPatients } from '../firebase/clinicDb'
 import { db } from '../firebase/config'
 import { parseCurl, sendCampaign } from '../firebase/whatsapp'
 
@@ -717,6 +718,123 @@ function BookingLinkBox({ uid }) {
 
 // ── Main Settings component ───────────────────────────────────────────────────
 
+
+// ── Activity Log Component ────────────────────────────────────────────────────
+const ACTION_ICON = {
+  appt_created:           '📅',
+  appt_status_changed:    '🔄',
+  appt_cancelled:         '❌',
+  appt_deleted:           '🗑️',
+  patient_edited:         '✏️',
+  settings_saved:         '⚙️',
+  prescription_created:   '💊',
+  session_report_sent:    '📊',
+  patient_list_downloaded:'📥',
+}
+
+function ActivityLog({ centreId }) {
+  const [logs,    setLogs]    = useState([])
+  const [loading, setLoading] = useState(false)
+  const [loaded,  setLoaded]  = useState(false)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const data = await getActivityLog(centreId, 200)
+      setLogs(data)
+    } catch(e) { console.error(e) }
+    setLoading(false)
+    setLoaded(true)
+  }
+
+  function formatTs(ts) {
+    if (!ts?.toDate) return '—'
+    const d = ts.toDate()
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      + ' · ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  if (!loaded) return (
+    <div style={{ textAlign: 'center', padding: 20 }}>
+      <button onClick={load} disabled={loading} style={{ padding: '9px 24px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--teal)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+        {loading ? 'Loading…' : '📋 Load Activity Log'}
+      </button>
+    </div>
+  )
+
+  if (logs.length === 0) return (
+    <div style={{ textAlign: 'center', padding: '20px', color: 'var(--muted)', fontSize: 13 }}>No activity recorded yet.</div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {logs.map((log, i) => (
+        <div key={log.id || i} style={{ display: 'flex', gap: 12, padding: '10px 2px', borderBottom: '1px solid var(--border)', alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{ACTION_ICON[log.action] || '📌'}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{log.label}</div>
+            {log.detail && <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.detail}</div>}
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{formatTs(log.timestamp)}{log.by ? ' · ' + log.by : ''}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Patient Export Component ──────────────────────────────────────────────────
+function PatientExport({ centreId, ownerEmail, centreName, user }) {
+  const [sending, setSending] = useState(false)
+  const [done,    setDone]    = useState(false)
+  const [err,     setErr]     = useState('')
+
+  async function handleExport() {
+    setSending(true); setErr(''); setDone(false)
+    try {
+      const patients = await getAllPatients(centreId)
+      // Build CSV
+      const headers = ['Name','Phone','Age','Gender','DOB','Source','Last Visit']
+      const rows = patients.map(p => [
+        p.name || '',
+        p.phone || '',   // unmasked in export
+        p.age || '',
+        p.gender || '',
+        p.dob || '',
+        p.source || '',
+        p.lastClinicVisit || p.lastDiagnosticVisit || '',
+      ])
+      const csv = [headers, ...rows].map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `${centreName || 'patients'}_export_${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      await logActivity(centreId, { action: 'patient_list_downloaded', label: 'Patient List Exported', detail: `${patients.length} patients · CSV downloaded`, by: user?.email || '' })
+      setDone(true)
+    } catch(e) {
+      console.error(e)
+      setErr('Export failed. Try again.')
+    }
+    setSending(false)
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 12, lineHeight: 1.7 }}>
+        Downloads a CSV file of all patients with name, phone, age, gender, DOB, source and last visit date.
+        Phone numbers are <strong>unmasked</strong> in the export.
+      </div>
+      <button onClick={handleExport} disabled={sending} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: sending ? 'var(--border)' : 'var(--teal)', color: sending ? 'var(--muted)' : 'white', fontWeight: 600, fontSize: 13, cursor: sending ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+        {sending ? 'Preparing…' : '📥 Download Patient List (CSV)'}
+      </button>
+      {done && <div style={{ marginTop: 8, fontSize: 12, color: '#065F46' }}>✓ Downloaded successfully</div>}
+      {err  && <div style={{ marginTop: 8, fontSize: 12, color: '#DC2626' }}>{err}</div>}
+    </div>
+  )
+}
+
 export default function Settings() {
   const { user, profile } = useAuth()
   const [toast, setToast]   = useState(null)
@@ -784,6 +902,7 @@ export default function Settings() {
         { merge: true }
       )
       setToast({ message: 'Saved successfully ✓', type: 'success' })
+      logActivity(user.uid, { action: 'settings_saved', label: 'Settings Saved', detail: Object.keys(fields).join(', '), by: user?.email || '' })
     } catch (err) {
       console.error(err)
       setToast({ message: 'Failed to save. Try again.', type: 'error' })
@@ -1127,6 +1246,17 @@ export default function Settings() {
           </Section>
         )}
       </div>
+
+        <Section title="📋 Activity Log">
+          <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 12 }}>
+            Tracks all key actions — appointments, settings changes, prescriptions, and exports.
+          </div>
+          <ActivityLog centreId={user?.uid} />
+        </Section>
+
+        <Section title="📥 Patient Data Export">
+          <PatientExport centreId={user?.uid} ownerEmail={form.phone} centreName={form.centreName} user={user} />
+        </Section>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </Layout>

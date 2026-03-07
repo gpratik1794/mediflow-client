@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Toast } from '../../components/UI'
-import { createAppointment, getNextToken, getAppointments, upsertClinicPatient } from '../../firebase/clinicDb'
+import { createAppointment, getNextToken, getAppointments, upsertClinicPatient , logActivity } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { searchPatients } from '../../firebase/db'
 import { format } from 'date-fns'
@@ -121,6 +121,7 @@ export default function NewAppointment() {
           : currentMins < 14 * 60 ? 'morning' : 'evening'
       const tokenNumber = await getNextToken(user.uid, form.date, slotSession)
       const apptId = await createAppointment(user.uid, { ...form, tokenNumber, session: slotSession, status: 'scheduled' })
+      logActivity(user.uid, { action: 'appt_created', label: 'Appointment Created', detail: `${form.patientName} · ${form.appointmentTime || 'Walk-in'} · Token #${tokenNumber}`, by: user?.email || '' })
       await upsertClinicPatient(user.uid, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
       if (profile?.whatsappCampaigns?.length) {
         sendCampaign(profile.whatsappCampaigns, 'appt_confirm', form.phone,

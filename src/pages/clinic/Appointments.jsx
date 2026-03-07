@@ -16,6 +16,14 @@ const STATUS_COLOR = {
   cancelled: { bg: 'var(--red-bg)', color: 'var(--red)', label: 'Cancelled' },
 }
 
+// ── Phone masking ────────────────────────────────────────────────────────────
+function maskPhone(phone) {
+  if (!phone) return ''
+  const p = String(phone).replace(/\D/g,'')
+  if (p.length < 6) return '••••••'
+  return p.slice(0, 2) + '••••••' + p.slice(-2)
+}
+
 export default function Appointments() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
@@ -42,6 +50,9 @@ export default function Appointments() {
     e.stopPropagation()
     await updateAppointment(user.uid, apptId, { status })
     setAppointments(a => a.map(x => x.id === apptId ? { ...x, status } : x))
+    const appt = appointments.find(x => x.id === apptId)
+    const labelMap = { waiting: 'Marked Waiting', 'in-consultation': 'Marked In Consultation', done: 'Marked Done', cancelled: 'Appointment Cancelled', scheduled: 'Marked Scheduled' }
+    logActivity(user.uid, { action: 'appt_status_changed', label: labelMap[status] || 'Status Changed', detail: appt?.patientName || apptId, by: user?.email || '' })
   }
 
   // ── Session helpers ──
@@ -287,7 +298,7 @@ export default function Appointments() {
                     </td>
                     <td style={{ padding: '12px 18px' }}>
                       <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--navy)' }}>{a.patientName}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.phone} · {a.age}y · {a.gender}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{maskPhone(a.phone)} · {a.age}y · {a.gender}</div>
                     </td>
                     <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{a.appointmentTime}</td>
                     <td style={{ padding: '12px 18px', fontSize: 12, color: 'var(--muted)' }}>{a.visitType}</td>
