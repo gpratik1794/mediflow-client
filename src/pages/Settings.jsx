@@ -423,10 +423,16 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
   today.setHours(0,0,0,0)
   const todayStr = today.toISOString().split('T')[0]
 
+  // Local style (sStyle not available here — defined in parent scope)
+  const sStyle = { width: '100%', padding: '8px 10px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }
+
   // Calendar state — which month are we viewing
   const [calYear,  setCalYear]  = useState(today.getFullYear())
   const [calMonth, setCalMonth] = useState(today.getMonth()) // 0-based
   const [slotInput, setSlotInput] = useState({}) // { 'YYYY-MM-DD': '10' }
+  // Slot override add form
+  const [oDate,  setODate]  = useState('')
+  const [oSlots, setOSlots] = useState('')
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa']
@@ -566,36 +572,30 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
         )}
 
         {/* Add override */}
-        {(() => {
-          const [oDate, setODate] = useState('')
-          const [oSlots, setOSlots] = useState('')
-          return (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div>
-                <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</span>
-                <input type="date" min={todayStr}
-                  value={oDate} onChange={e => setODate(e.target.value)}
-                  style={{ ...sStyle, width: 150 }} />
-              </div>
-              <div>
-                <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Max Slots</span>
-                <input type="number" min="1" max="50" placeholder="e.g. 8"
-                  value={oSlots} onChange={e => setOSlots(e.target.value)}
-                  style={{ ...sStyle, width: 90 }} />
-              </div>
-              <button type="button"
-                onClick={() => {
-                  if (!oDate || !oSlots) return
-                  saveSlotOverride(oDate, oSlots)
-                  setODate(''); setOSlots('')
-                }}
-                disabled={!oDate || !oSlots}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: (oDate && oSlots) ? 'var(--teal)' : 'var(--border)', color: (oDate && oSlots) ? 'white' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: (oDate && oSlots) ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
-                Add Override
-              </button>
-            </div>
-          )
-        })()}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</span>
+            <input type="date" min={todayStr}
+              value={oDate} onChange={e => setODate(e.target.value)}
+              style={{ ...sStyle, width: 150 }} />
+          </div>
+          <div>
+            <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Max Slots</span>
+            <input type="number" min="1" max="50" placeholder="e.g. 8"
+              value={oSlots} onChange={e => setOSlots(e.target.value)}
+              style={{ ...sStyle, width: 90 }} />
+          </div>
+          <button type="button"
+            onClick={() => {
+              if (!oDate || !oSlots) return
+              saveSlotOverride(oDate, oSlots)
+              setODate(''); setOSlots('')
+            }}
+            disabled={!oDate || !oSlots}
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: (oDate && oSlots) ? 'var(--teal)' : 'var(--border)', color: (oDate && oSlots) ? 'white' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: (oDate && oSlots) ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
+            Add Override
+          </button>
+        </div>
       </div>
     </div>
   )
