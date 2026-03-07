@@ -348,9 +348,23 @@ export default function BookAppointment() {
         const conflict = apptSnap.docs.find(d => d.data().appointmentTime === selSlot)
         if (conflict) throw new Error('SLOT_TAKEN')
 
-        // Calculate next token — per session so evening starts from 1
+        // Calculate next token — per session using time-based detection
+        // Works even for old appointments that don't have session field
+        const getApptSession = (apptTime) => {
+          if (!apptTime || apptTime === 'Walk-in (no slot)') return null
+          const parts = apptTime.trim().split(' ')
+          const hm = parts[0].split(':')
+          let h = Number(hm[0])
+          if (parts[1] === 'PM' && h !== 12) h += 12
+          if (parts[1] === 'AM' && h === 12) h = 0
+          return h < 14 ? 'morning' : 'evening'
+        }
         const sessionTokens = apptSnap.docs
-          .filter(d => d.data().status !== 'cancelled' && d.data().session === selSession)
+          .filter(d => d.data().status !== 'cancelled')
+          .filter(d => {
+            const apptSession = d.data().session || getApptSession(d.data().appointmentTime)
+            return apptSession === selSession
+          })
           .map(d => d.data().tokenNumber || 0)
         tokenNumber = sessionTokens.length > 0 ? Math.max(...sessionTokens) + 1 : 1
 
@@ -624,9 +638,23 @@ export default function BookAppointment() {
                 {currentSlots.map((slot, i) => {
                   const bk = bookedSlots.includes(slot)
                   const on = selSlot === slot
+                  // Disable past slots for today only
+                  let isPast = false
+                  if (selDate && toLocalDateStr(selDate) === toLocalDateStr(new Date())) {
+                    const parts = slot.split(' ')
+                    const hm = parts[0].split(':')
+                    let h = Number(hm[0])
+                    const min = Number(hm[1])
+                    if (parts[1] === 'PM' && h !== 12) h += 12
+                    if (parts[1] === 'AM' && h === 12) h = 0
+                    const now = new Date()
+                    isPast = (h * 60 + min) < (now.getHours() * 60 + now.getMinutes())
+                  }
+                  const disabled = bk || isPast
                   return (
-                    <div key={i} style={S.slotBtn(on, bk)} onClick={() => { if (!bk) setSelSlot(slot) }}>
+                    <div key={i} style={S.slotBtn(on, disabled)} onClick={() => { if (!disabled) setSelSlot(slot) }}>
                       {slot}
+                      {isPast && !bk && <div style={{ fontSize: 9, color: '#8FA3B0', marginTop: 2 }}>Past</div>}
                     </div>
                   )
                 })}

@@ -107,13 +107,16 @@ export default function NewAppointment() {
     }
     setLoading(true)
     try {
-      const currentHour = new Date().getHours()
-      const walkinSession = currentHour < 14 ? 'morning' : 'evening'
-      const session = form.appointmentTime === 'Walk-in (no slot)'
-        ? walkinSession
-        : MORNING_SLOTS.includes(form.appointmentTime) ? 'morning' : 'evening'
-      const tokenNumber = await getNextToken(user.uid, form.date, session)
-      const apptId = await createAppointment(user.uid, { ...form, tokenNumber, session, status: 'scheduled' })
+      // Detect session from slot time — works for morning, evening, and walk-in
+      const now = new Date()
+      const currentMins = now.getHours() * 60 + now.getMinutes()
+      const slotSession = MORNING_SLOTS.includes(form.appointmentTime)
+        ? 'morning'
+        : EVENING_SLOTS.includes(form.appointmentTime)
+          ? 'evening'
+          : currentMins < 14 * 60 ? 'morning' : 'evening'
+      const tokenNumber = await getNextToken(user.uid, form.date, slotSession)
+      const apptId = await createAppointment(user.uid, { ...form, tokenNumber, session: slotSession, status: 'scheduled' })
       await upsertClinicPatient(user.uid, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
       if (profile?.whatsappCampaigns?.length) {
         sendCampaign(profile.whatsappCampaigns, 'appt_confirm', form.phone,
@@ -225,13 +228,28 @@ export default function NewAppointment() {
                     {TIME_SLOTS.map(slot => {
                       const isBooked = slot !== 'Walk-in (no slot)' && bookedSlots.includes(slot)
                       const isSel    = form.appointmentTime === slot
+                      // Disable past slots only for today
+                      let isPast = false
+                      if (slot !== 'Walk-in (no slot)' && form.date === today) {
+                        const parts = slot.split(' ')
+                        const hm = parts[0].split(':')
+                        let h = Number(hm[0])
+                        const min = Number(hm[1])
+                        if (parts[1] === 'PM' && h !== 12) h += 12
+                        if (parts[1] === 'AM' && h === 12) h = 0
+                        const slotMins = h * 60 + min
+                        const now = new Date()
+                        isPast = slotMins < now.getHours() * 60 + now.getMinutes()
+                      }
+                      const isDisabled = isBooked || isPast
                       return (
                         <button key={slot} type="button"
-                          onClick={() => !isBooked && setForm(f => ({ ...f, appointmentTime: slot }))}
-                          disabled={isBooked}
-                          style={{ padding: '7px 4px', borderRadius: 8, border: '1.5px solid', borderColor: isSel ? 'var(--teal)' : 'var(--border)', background: isSel ? 'var(--teal-light)' : isBooked ? 'var(--bg)' : 'none', color: isSel ? 'var(--teal)' : isBooked ? 'var(--muted)' : 'var(--slate)', fontSize: 11, cursor: isBooked ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: isSel ? 600 : 400, opacity: isBooked ? 0.5 : 1 }}>
+                          onClick={() => !isDisabled && setForm(f => ({ ...f, appointmentTime: slot }))}
+                          disabled={isDisabled}
+                          style={{ padding: '7px 4px', borderRadius: 8, border: '1.5px solid', borderColor: isSel ? 'var(--teal)' : 'var(--border)', background: isSel ? 'var(--teal-light)' : isDisabled ? 'var(--bg)' : 'none', color: isSel ? 'var(--teal)' : isDisabled ? 'var(--muted)' : 'var(--slate)', fontSize: 11, cursor: isDisabled ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: isSel ? 600 : 400, opacity: isDisabled ? 0.4 : 1 }}>
                           {slot}
-                          {isBooked && <span style={{ display: 'block', fontSize: 9, color: 'var(--red)', marginTop: 1 }}>Booked</span>}
+                          {isBooked && !isPast && <span style={{ display: 'block', fontSize: 9, color: 'var(--red)', marginTop: 1 }}>Booked</span>}
+                          {isPast && <span style={{ display: 'block', fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>Past</span>}
                         </button>
                       )
                     })}

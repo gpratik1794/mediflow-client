@@ -53,12 +53,28 @@ export async function getAppointments(centreId, dateStr) {
     return toMins(a.appointmentTime) - toMins(b.appointmentTime)
   })
 }
+// Determine session from appointment time string (e.g. "07:30 PM" → evening)
+export function getSessionFromTime(timeStr) {
+  if (!timeStr || timeStr === 'Walk-in (no slot)') return null
+  const parts = timeStr.trim().split(' ')
+  if (parts.length < 2) return null
+  const hm = parts[0].split(':')
+  let h = Number(hm[0])
+  const period = parts[1]
+  if (period === 'PM' && h !== 12) h += 12
+  if (period === 'AM' && h === 12) h = 0
+  // Morning = before 14:00 (2 PM), Evening = 14:00 onwards
+  return h < 14 ? 'morning' : 'evening'
+}
+
 export async function getNextToken(centreId, dateStr, session = null) {
   const appts = await getAppointments(centreId, dateStr)
   const filtered = appts.filter(a => {
     if (a.status === 'cancelled') return false
-    if (session) return a.session === session
-    return true
+    if (!session) return true
+    // Use time-based session detection — works even for old appointments without session field
+    const apptSession = a.session || getSessionFromTime(a.appointmentTime)
+    return apptSession === session
   })
   const tokens = filtered.map(a => a.tokenNumber || 0)
   return tokens.length > 0 ? Math.max(...tokens) + 1 : 1
