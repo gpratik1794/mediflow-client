@@ -276,18 +276,18 @@ export default function BookAppointment() {
       }
       try {
         // Batch: one query per date would be too many — query the whole 14-day window
+        // No status filter to avoid needing composite index — filter cancelled in JS
         const startDs = dates[0]; const endDs = dates[dates.length - 1]
         const q = query(
           collection(db, 'centres', centreId, 'appointments'),
           where('date', '>=', startDs),
-          where('date', '<=', endDs),
-          where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
+          where('date', '<=', endDs)
         )
         const snap = await getDocs(q)
         const counts = {}
         snap.docs.forEach(doc => {
-          const { date, appointmentTime } = doc.data()
-          if (!date || !appointmentTime) return
+          const { date, appointmentTime, status } = doc.data()
+          if (!date || !appointmentTime || status === 'cancelled') return
           if (!counts[date]) counts[date] = { morning: 0, evening: 0 }
           // Determine session from time
           const parts = appointmentTime.split(' ')
@@ -731,7 +731,7 @@ export default function BookAppointment() {
             <div style={S.cardSub}>Next 14 days · weekly off days are greyed out</div>
             {/* Date strip */}
             <div style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '2px 0 10px', WebkitOverflowScrolling: 'touch' }}>
-              {dateChips.map(({ date, off, reason }, i) => {
+              {dateChips.map(({ date, off, reason, available, totalSlots }, i) => {
                 const on = selDate && date.toDateString() === selDate.toDateString()
                 return (
                   <div key={i} style={S.dateChip(on, off)} onClick={() => { if (!off) { setSelDate(date); setSelSlot(null) } }}>
