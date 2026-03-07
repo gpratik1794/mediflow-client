@@ -387,7 +387,12 @@ export default function BookAppointment() {
         await sendCampaign(campaigns, 'appt_confirm', fullPhone,
           [name.trim(), docName || centreName, dateStr, selSlot],
           null, { centreId, patientName: name.trim(), apptId }
-        )
+        )// Always notify admin regardless of campaign path
+  	const apiKey = centre?.aisynergyApiKey
+  	if (apiKey) {
+    		const adminMsg = `🔔 New Online Booking\nClinic: ${centreName}\nPatient: ${name.trim()} (+91${phone})\nDate: ${dateLabel}\nTime: ${selSlot}${docName ? '\nDoctor: ' + docName : ''}\nToken: #${tokenNumber}`
+    await sendPlainWA(apiKey, centre?.fallbackNotifyNumber || FALLBACK_NOTIFY_NUMBER, adminMsg)
+  }
       } else {
         // Fallback: plain text WA to patient + admin notify
         const apiKey = centre?.aisynergyApiKey
