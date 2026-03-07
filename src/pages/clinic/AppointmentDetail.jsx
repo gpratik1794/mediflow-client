@@ -33,6 +33,9 @@ export default function AppointmentDetail() {
   const [vitals, setVitals]     = useState({})
   const [notes, setNotes]       = useState('')
   const [savingVitals, setSavingVitals] = useState(false)
+  const [fee, setFee]           = useState('')
+  const [paymentStatus, setPaymentStatus] = useState('pending')
+  const [savingFee, setSavingFee] = useState(false)
 
   useEffect(() => { if (user && id) loadData() }, [id, user])
 
@@ -45,6 +48,8 @@ export default function AppointmentDetail() {
         setAppt(data)
         setVitals(data.vitals || {})
         setNotes(data.clinicalNotes || '')
+        setFee(data.consultationFee || '')
+        setPaymentStatus(data.paymentStatus || 'pending')
         // Load prescriptions — wrapped separately so a missing index doesn't block loading
         try {
           const presc = await getPrescriptions(user.uid, data.phone)
@@ -100,6 +105,14 @@ export default function AppointmentDetail() {
     await updateAppointment(user.uid, id, { vitals, clinicalNotes: notes })
     setToast({ message: 'Vitals & notes saved', type: 'success' })
     setSavingVitals(false)
+  }
+
+  async function handleSaveFee() {
+    setSavingFee(true)
+    await updateAppointment(user.uid, id, { consultationFee: fee, paymentStatus })
+    setAppt(a => ({ ...a, consultationFee: fee, paymentStatus }))
+    setToast({ message: 'Fee updated', type: 'success' })
+    setSavingFee(false)
   }
 
   if (loading) return <Layout title="Appointment"><Empty icon="⏳" message="Loading…" /></Layout>
@@ -258,11 +271,61 @@ export default function AppointmentDetail() {
                 </div>
               ))}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: 'var(--muted)' }}>Fee</span>
+                <span style={{ fontWeight: 600, color: 'var(--navy)' }}>
+                  {appt.consultationFee ? `₹${appt.consultationFee}` : '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: 'var(--muted)' }}>Payment</span>
+                <span style={{
+                  padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                  background: appt.paymentStatus === 'paid' ? 'var(--green-bg)' : 'var(--amber-bg)',
+                  color: appt.paymentStatus === 'paid' ? 'var(--green)' : 'var(--amber)'
+                }}>
+                  {appt.paymentStatus === 'paid' ? '✓ Paid' : 'Pending'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                 <span style={{ color: 'var(--muted)' }}>Status</span>
                 <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: sc.bg, color: sc.color }}>
                   {STATUS_LABELS[appt.status]}
                 </span>
               </div>
+            </div>
+          </Card>
+
+          {/* Fee Edit Card */}
+          <Card>
+            <CardHeader title="💰 Consultation Fee" sub="Update fee or mark as paid" />
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>Amount (₹)</label>
+                <input
+                  type="number" value={fee} onChange={e => setFee(e.target.value)}
+                  placeholder="e.g. 500"
+                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['pending', 'paid', 'free'].map(s => (
+                  <button key={s} type="button" onClick={() => setPaymentStatus(s)} style={{
+                    flex: 1, padding: '8px 4px', borderRadius: 8, border: '1.5px solid',
+                    borderColor: paymentStatus === s ? 'var(--teal)' : 'var(--border)',
+                    background: paymentStatus === s ? 'var(--teal-light)' : 'var(--surface)',
+                    color: paymentStatus === s ? 'var(--teal)' : 'var(--slate)',
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+                    textTransform: 'capitalize'
+                  }}>
+                    {s === 'paid' ? '✓ Paid' : s === 'free' ? '🆓 Free' : '⏳ Pending'}
+                  </button>
+                ))}
+              </div>
+              <Btn onClick={handleSaveFee} disabled={savingFee} small>
+                {savingFee ? 'Saving…' : '💾 Save Fee'}
+              </Btn>
             </div>
           </Card>
 
