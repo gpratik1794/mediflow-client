@@ -205,7 +205,7 @@ export default function AppointmentDetail() {
 
           {/* Past prescriptions */}
           <Card>
-            <CardHeader title="Past Prescriptions" sub="Last 6 months" />
+            <CardHeader title="Past Prescriptions" sub="Prescription History" />
             {prescriptions.length === 0 ? (
               <Empty icon="📝" message="No previous prescriptions for this patient" />
             ) : (
