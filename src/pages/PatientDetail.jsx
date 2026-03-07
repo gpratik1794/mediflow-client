@@ -6,8 +6,9 @@ import { useAuth } from '../utils/AuthContext'
 import Layout from '../components/Layout'
 import { Card, CardHeader, Badge, Btn, Empty } from '../components/UI'
 import { db } from '../firebase/config'
-import { collection, doc, getDoc, getDocs, query, where, orderBy, limit } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, where, orderBy, limit, updateDoc } from 'firebase/firestore'
 import { getAllPrescriptions, getPatientAppointments } from '../firebase/clinicDb'
+import DobPicker from '../components/DobPicker'
 
 export default function PatientDetail() {
   const { id } = useParams()
@@ -20,6 +21,20 @@ export default function PatientDetail() {
   const [prescriptions, setPrescriptions] = useState([])
   const [tab,           setTab]           = useState('overview')
   const [loading,       setLoading]       = useState(true)
+  const [editingDob,    setEditingDob]    = useState(false)
+  const [dobValue,      setDobValue]      = useState('')
+  const [savingDob,     setSavingDob]     = useState(false)
+
+  async function saveDob(dob, age) {
+    if (!dob || !user || !id) return
+    setSavingDob(true)
+    try {
+      await updateDoc(doc(db, 'centres', user.uid, 'patients', id), { dob, age: age || patient.age || '' })
+      setPatient(p => ({ ...p, dob, age: age || p.age }))
+      setEditingDob(false)
+    } catch (e) { console.error(e) }
+    setSavingDob(false)
+  }
 
   const isClinic     = profile?.centreType === 'clinic'
   const isDiagnostic = profile?.centreType === 'diagnostic'
@@ -113,12 +128,35 @@ export default function PatientDetail() {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--navy)' }}>{patient.name}</div>
-            <div style={{ fontSize: 13, color: 'var(--slate)', marginTop: 3, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--slate)', marginTop: 3, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
               <span>📱 {patient.phone}</span>
               {patient.age    && <span>🎂 {patient.age}y</span>}
+              {patient.dob    && <span style={{ color: 'var(--muted)' }}>DOB: {patient.dob}</span>}
               {patient.gender && <span>⚧ {patient.gender}</span>}
               {patient.city   && <span>📍 {patient.city}</span>}
+              {isClinic && !patient.dob && !editingDob && (
+                <button onClick={() => { setDobValue(''); setEditingDob(true) }}
+                  style={{ fontSize: 11, padding: '2px 10px', borderRadius: 20, border: '1.5px solid var(--border)', background: 'none', color: 'var(--teal)', cursor: 'pointer', fontFamily: 'DM Sans', fontWeight: 600 }}>
+                  + Add DOB
+                </button>
+              )}
             </div>
+            {editingDob && (
+              <div style={{ marginTop: 12, padding: '14px 16px', background: 'var(--bg)', borderRadius: 12, border: '1.5px solid var(--teal-light)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Add Date of Birth</div>
+                <DobPicker value={dobValue} onChange={(dob, age) => setDobValue(dob)} />
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button onClick={() => saveDob(dobValue, '')} disabled={!dobValue || savingDob}
+                    style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: dobValue ? 'var(--teal)' : 'var(--border)', color: dobValue ? 'white' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: dobValue ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans' }}>
+                    {savingDob ? 'Saving…' : 'Save DOB'}
+                  </button>
+                  <button onClick={() => setEditingDob(false)}
+                    style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'none', color: 'var(--slate)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           {!isClinic && (
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>

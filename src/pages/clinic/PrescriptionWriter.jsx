@@ -41,7 +41,7 @@ export default function PrescriptionWriter() {
   const [followUpDays, setFollowUpDays] = useState('')
 
   // Lab tests to order
-  const [labTests, setLabTests] = useState('')
+  const [labTests, setLabTests] = useState([])  // [{name, instructions}]
 
   const today = format(new Date(), 'yyyy-MM-dd')
 
@@ -83,7 +83,7 @@ export default function PrescriptionWriter() {
 
   const handlePrint = () => printPrescription({
     patient, diagnosis, complaints, medicines: selectedMeds,
-    advice, labTests, followUpDays, profile, date: today
+    advice, labTests: labTests.filter(t => t.name.trim()), followUpDays, profile, date: today
   })
 
   async function handleSave() {
@@ -95,7 +95,7 @@ export default function PrescriptionWriter() {
       const prescId = await createPrescription(user.uid, {
         patientName: patient.name, patientPhone: patient.phone,
         patientAge: patient.age, patientGender: patient.gender,
-        diagnosis, complaints, advice, labTests,
+        diagnosis, complaints, advice, labTests: labTests.filter(t => t.name.trim()),
         medicines: selectedMeds,
         date: today, apptId,
         doctorName: profile?.ownerName || '',
@@ -316,10 +316,32 @@ export default function PrescriptionWriter() {
                   style={{ ...inputStyle, resize: 'vertical' }} />
               </div>
               <div>
-                <label style={lStyle}>Lab Tests Advised (optional)</label>
-                <textarea value={labTests} onChange={e => setLabTests(e.target.value)}
-                  placeholder="e.g. CBC, Blood Glucose Fasting, LFT" rows={2}
-                  style={{ ...inputStyle, resize: 'vertical' }} />
+                <label style={lStyle}>Lab Tests Advised</label>
+                {labTests.map((t, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
+                    <input
+                      value={t.name}
+                      onChange={e => setLabTests(ts => ts.map((x,i) => i===idx ? {...x, name: e.target.value} : x))}
+                      placeholder="Test name e.g. CBC, HbA1c"
+                      style={{ ...inputStyle, flex: 1.5 }}
+                    />
+                    <input
+                      value={t.instructions}
+                      onChange={e => setLabTests(ts => ts.map((x,i) => i===idx ? {...x, instructions: e.target.value} : x))}
+                      placeholder="Instructions e.g. Fasting, 8am"
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <button type="button" onClick={() => setLabTests(ts => ts.filter((_,i) => i !== idx))}
+                      style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button type="button"
+                  onClick={() => setLabTests(ts => [...ts, { name: '', instructions: '' }])}
+                  style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px dashed var(--border)', background: 'none', color: 'var(--teal)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', width: '100%', marginTop: labTests.length ? 0 : 0 }}>
+                  + Add Lab Test
+                </button>
               </div>
             </div>
           </Card>
@@ -365,6 +387,7 @@ export default function PrescriptionWriter() {
                 ['Gender', patient.gender || '—'],
                 ['Diagnosis', diagnosis || '—'],
                 ['Medicines', selectedMeds.length + ' added'],
+                ['Lab Tests', labTests.filter(t=>t.name.trim()).length + ' added'],
                 ['Follow-up', followUpDays ? `In ${followUpDays} days` : 'None'],
               ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
@@ -457,10 +480,16 @@ function PrintPrescription({ patient, diagnosis, complaints, medicines, advice, 
       </div>
 
       {/* Lab tests */}
-      {labTests && (
+      {labTests && labTests.length > 0 && (
         <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FEF6E7', borderRadius: 8 }}>
-          <div style={{ fontSize: 11, color: '#F5A623', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Investigations Advised</div>
-          <div style={{ fontSize: 13, color: '#444' }}>{labTests}</div>
+          <div style={{ fontSize: 11, color: '#F5A623', fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>Investigations Advised</div>
+          {labTests.map((t, i) => (
+            <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 13, color: '#444' }}>
+              <span style={{ fontWeight: 600, minWidth: 20 }}>{i+1}.</span>
+              <span style={{ flex: 1 }}>{t.name}</span>
+              {t.instructions && <span style={{ color: '#888', fontStyle: 'italic' }}>{t.instructions}</span>}
+            </div>
+          ))}
         </div>
       )}
 

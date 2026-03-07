@@ -8,6 +8,7 @@ import { createAppointment, getNextToken, getAppointments, upsertClinicPatient }
 import { sendCampaign } from '../../firebase/whatsapp'
 import { searchPatients } from '../../firebase/db'
 import { format } from 'date-fns'
+import DobPicker from '../../components/DobPicker'
 
 function generateSlots(startTime, endTime, intervalMinutes) {
   const slots = []
@@ -89,7 +90,6 @@ export default function NewAppointment() {
   }
 
   function handleDobChange(e) {
-    const dob = e.target.value
     const age = dob ? String(Math.floor((new Date() - new Date(dob)) / (365.25 * 24 * 60 * 60 * 1000))) : ''
     setForm(f => ({ ...f, dob, age }))
   }
@@ -179,26 +179,30 @@ export default function NewAppointment() {
                   placeholder="e.g. Rahul Sharma" required style={iStyle} />
               </div>
 
-              {/* Age + DOB + Gender */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              {/* DOB + Gender */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
-                  <label style={lStyle}>Age (years)</label>
-                  <input type="number" value={form.age} onChange={setF('age')}
-                    placeholder="e.g. 32" min="0" max="150" style={iStyle} />
+                  <label style={lStyle}>Date of Birth <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none' }}>(age auto-calculated)</span></label>
+                  <DobPicker
+                    value={form.dob}
+                    onChange={(dob, age) => setForm(f => ({ ...f, dob, age: age || f.age }))}
+                  />
                 </div>
-                <div>
-                  <label style={lStyle}>Date of Birth</label>
-                  <input type="date" value={form.dob} onChange={handleDobChange}
-                    style={{ ...iStyle, color: form.dob ? 'var(--navy)' : '#aaa' }} />
-                </div>
-                <div>
-                  <label style={lStyle}>Gender</label>
-                  <select value={form.gender} onChange={setF('gender')} style={iStyle}>
-                    <option value="">Select gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={lStyle}>Age (years) <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none' }}>override if DOB unknown</span></label>
+                    <input type="number" value={form.age} onChange={setF('age')}
+                      placeholder="e.g. 32" min="0" max="150" style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Gender</label>
+                    <select value={form.gender} onChange={setF('gender')} style={iStyle}>
+                      <option value="">Select gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 

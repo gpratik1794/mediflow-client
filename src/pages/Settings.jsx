@@ -594,12 +594,10 @@ function DoctorsManager({ doctors, onChange }) {
   )
 }
 
-// ── Booking Link Box ──────────────────────────────────────────────────────────
+// ── Clinic Links Box — Booking + Token Display ───────────────────────────────
 
-function BookingLinkBox({ uid }) {
+function LinkCard({ title, icon, desc, link, openLabel, openIcon, accentColor = 'var(--teal)' }) {
   const [copied, setCopied] = useState(false)
-  const link = uid ? `https://mediflow.synergyconsultant.co.in/book/${uid}` : ''
-
   function copyLink() {
     if (!link) return
     navigator.clipboard.writeText(link).then(() => {
@@ -607,55 +605,72 @@ function BookingLinkBox({ uid }) {
       setTimeout(() => setCopied(false), 2500)
     })
   }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.7 }}>
-        Share this link with your patients — they can book appointments directly without logging in.
-        Paste it in your WhatsApp auto-reply, Google listing, or anywhere you like.
+    <div style={{
+      flex: 1, background: 'var(--bg)', borderRadius: 14, padding: '18px 20px',
+      border: `1.5px solid ${accentColor === 'var(--teal)' ? 'var(--border)' : 'var(--teal-light)'}`,
+      display: 'flex', flexDirection: 'column', gap: 10
+    }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>{icon} {title}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>{desc}</div>
       </div>
-
-      {/* Link display box */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', gap: 8 }}>
         <div style={{
-          flex: 1, padding: '10px 14px', borderRadius: 10,
+          flex: 1, padding: '8px 12px', borderRadius: 8,
           border: '1.5px solid var(--border)', background: '#fff',
-          fontSize: 12, color: 'var(--navy)', fontFamily: 'monospace',
-          wordBreak: 'break-all', lineHeight: 1.6,
-          userSelect: 'all',
+          fontSize: 11, color: 'var(--navy)', fontFamily: 'monospace',
+          wordBreak: 'break-all', lineHeight: 1.5, userSelect: 'all',
         }}>
           {link || 'Loading…'}
         </div>
-        <button
-          type="button"
-          onClick={copyLink}
-          style={{
-            padding: '10px 16px', borderRadius: 10, border: 'none', flexShrink: 0,
-            background: copied ? '#16A34A' : 'var(--teal)',
-            color: 'white', fontSize: 13, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
-            transition: 'background 0.2s', whiteSpace: 'nowrap',
-          }}
-        >
+        <button type="button" onClick={copyLink} style={{
+          padding: '8px 14px', borderRadius: 8, border: 'none', flexShrink: 0,
+          background: copied ? '#16A34A' : accentColor,
+          color: 'white', fontSize: 12, fontWeight: 600,
+          cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+          transition: 'background 0.2s', whiteSpace: 'nowrap',
+        }}>
           {copied ? '✓ Copied!' : '📋 Copy'}
         </button>
       </div>
-
-      {/* Open form button */}
-      <a
-        href={link}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          padding: '11px 0', borderRadius: 10,
-          border: '1.5px solid var(--teal)', background: 'var(--teal-light)',
-          color: 'var(--teal)', fontSize: 13, fontWeight: 600,
-          textDecoration: 'none', fontFamily: 'DM Sans, sans-serif',
-        }}
-      >
-        ↗ Open Booking Form
+      <a href={link} target="_blank" rel="noopener noreferrer" style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        padding: '9px 0', borderRadius: 8,
+        border: `1.5px solid ${accentColor}`,
+        background: accentColor === 'var(--teal)' ? 'var(--teal-light)' : 'rgba(11,158,138,0.06)',
+        color: accentColor, fontSize: 12, fontWeight: 600,
+        textDecoration: 'none', fontFamily: 'DM Sans, sans-serif',
+      }}>
+        {openIcon} {openLabel}
       </a>
+    </div>
+  )
+}
+
+function BookingLinkBox({ uid }) {
+  const bookingLink = uid ? `https://mediflow.synergyconsultant.co.in/book/${uid}` : ''
+  const displayLink = uid ? `https://mediflow.synergyconsultant.co.in/display/${uid}` : ''
+  return (
+    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+      <LinkCard
+        title="Patient Booking Link"
+        icon="🔗"
+        desc="Share with patients to book appointments online. Use in WhatsApp auto-reply or Google listing."
+        link={bookingLink}
+        openLabel="Open Booking Form"
+        openIcon="↗"
+        accentColor="var(--teal)"
+      />
+      <LinkCard
+        title="Token Display URL"
+        icon="📺"
+        desc="Open on a TV or screen in your waiting area. Shows live token number — no patient details."
+        link={displayLink}
+        openLabel="Open Display Screen"
+        openIcon="📺"
+        accentColor="var(--teal)"
+      />
     </div>
   )
 }
