@@ -761,17 +761,15 @@ export default function BookAppointment() {
                 const eveningEndH = parseInt((centre?.eveningEnd || '20:00').split(':')[0])
                 const morningPast = isToday && nowH >= morningEndH
                 const eveningPast = isToday && nowH >= eveningEndH
-                return [
-                  (() => {
-                    const ds2 = selDate ? selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0') : null
-                    const bc = ds2 ? (dateBookedCounts[ds2] || { morning: 0, evening: 0 }) : { morning: 0, evening: 0 }
-                    const mAvail = morningOverride === 'off' ? 0 : Math.max(0, applyOverride(morningSlots, morningOverride).length - bc.morning)
-                    const eAvail = eveningOverride === 'off' ? 0 : Math.max(0, applyOverride(eveningSlots, eveningOverride).length - bc.evening)
-                    return [
-                      { key: 'morning', icon: '🌅', label: 'Morning', time: `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`, avail: mAvail, total: applyOverride(morningSlots, morningOverride).length, off: morningOverride === 'off', past: morningPast },
-                      { key: 'evening', icon: '🌆', label: 'Evening', time: `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`, avail: eAvail, total: applyOverride(eveningSlots, eveningOverride).length, off: eveningOverride === 'off', past: eveningPast },
-                    ]
-                  })().map(sess => (
+                const ds2 = selDate ? selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0') : null
+                const bc = ds2 ? (dateBookedCounts[ds2] || { morning: 0, evening: 0 }) : { morning: 0, evening: 0 }
+                const mAvail = morningOverride === 'off' ? 0 : Math.max(0, applyOverride(morningSlots, morningOverride).length - bc.morning)
+                const eAvail = eveningOverride === 'off' ? 0 : Math.max(0, applyOverride(eveningSlots, eveningOverride).length - bc.evening)
+                const sessions = [
+                  { key: 'morning', icon: '🌅', label: 'Morning', time: `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`, avail: mAvail, total: applyOverride(morningSlots, morningOverride).length, off: morningOverride === 'off', past: morningPast },
+                  { key: 'evening', icon: '🌆', label: 'Evening', time: `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`, avail: eAvail, total: applyOverride(eveningSlots, eveningOverride).length, off: eveningOverride === 'off', past: eveningPast },
+                ]
+                return sessions.map(sess => (
                   <div key={sess.key}
                     style={{
                       ...S.sessCard(selSession === sess.key && !sess.past && !sess.off),
