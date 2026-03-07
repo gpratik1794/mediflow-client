@@ -1,5 +1,5 @@
 // src/pages/clinic/NewAppointment.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
@@ -45,6 +45,7 @@ export default function NewAppointment() {
   const [searchResults, setSearchResults] = useState([])
   const [bookedSlots, setBookedSlots]     = useState([])
   const [searching, setSearching]         = useState(false)
+  const submittingRef                     = useRef(false)
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const [form, setForm] = useState({
@@ -96,12 +97,15 @@ export default function NewAppointment() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.patientName || !form.phone) return
+    if (submittingRef.current) return
+    submittingRef.current = true
     if (form.appointmentTime !== 'Walk-in (no slot)') {
       const ex = await getAppointments(user.uid, form.date)
       const conflict = ex.find(a => a.appointmentTime === form.appointmentTime && a.status !== 'cancelled')
       if (conflict) {
         setToast({ message: `${form.appointmentTime} is already booked.`, type: 'error' })
         setBookedSlots(ex.filter(a => a.status !== 'cancelled').map(a => a.appointmentTime))
+        submittingRef.current = false
         return
       }
     }
@@ -129,6 +133,7 @@ export default function NewAppointment() {
       setToast({ message: 'Booking failed. Try again.', type: 'error' })
     }
     setLoading(false)
+    submittingRef.current = false
   }
 
   const MORNING_SLOTS = generateSlots(profile?.morningStart || '09:00', profile?.morningEnd || '13:00', profile?.slotDuration)

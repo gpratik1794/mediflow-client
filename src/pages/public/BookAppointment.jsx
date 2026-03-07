@@ -1,5 +1,5 @@
 // src/pages/public/BookAppointment.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   doc, getDoc, collection, query, where, getDocs,
@@ -196,6 +196,7 @@ export default function BookAppointment() {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone]         = useState(false)
   const [apptId, setApptId]     = useState(null)
+  const submittingRef           = useRef(false) // instant guard against double-clicks
 
   // ── Load centre profile ──
   useEffect(() => {
@@ -301,7 +302,8 @@ export default function BookAppointment() {
 
   // ── Submit ──
   async function handleConfirm() {
-    if (submitting) return
+    if (submittingRef.current) return  // instant ref guard — blocks before React re-render
+    submittingRef.current = true
     setSubmitting(true)
     try {
       const dateStr     = toLocalDateStr(selDate)
@@ -330,8 +332,7 @@ export default function BookAppointment() {
         patientId = newPat.id
       }
 
-      // ── 2. Transaction: check slot + get token + write appointment atomically ──
-      // Prevents two patients booking the same slot simultaneously
+      // ── 2. Transaction: check slot + duplicate + get token + write appointment atomically ──
       let apptId = null
       let tokenNumber = null
 
@@ -347,6 +348,10 @@ export default function BookAppointment() {
         // Check for slot conflict
         const conflict = apptSnap.docs.find(d => d.data().appointmentTime === selSlot)
         if (conflict) throw new Error('SLOT_TAKEN')
+
+        // Check duplicate — same patient already booked for this date
+        const duplicate = apptSnap.docs.find(d => d.data().phone === phone.trim())
+        if (duplicate) throw new Error('ALREADY_BOOKED')
 
         // Calculate next token — per session using time-based detection
         // Works even for old appointments that don't have session field
@@ -425,7 +430,6 @@ export default function BookAppointment() {
     } catch (e) {
       if (e.message === 'SLOT_TAKEN') {
         alert('Sorry! This slot was just booked by someone else. Please go back and choose another slot.')
-        // Refresh booked slots so UI reflects reality
         const dateStr = toLocalDateStr(selDate)
         const snap = await getDocs(query(
           collection(db, 'centres', centreId, 'appointments'),
@@ -435,12 +439,16 @@ export default function BookAppointment() {
         setBookedSlots(snap.docs.map(d => d.data().appointmentTime).filter(Boolean))
         setSelSlot(null)
         setStep(4)
+      } else if (e.message === 'ALREADY_BOOKED') {
+        alert('You already have an appointment booked for this date. Please contact the clinic if you need to make changes.')
+        setStep(1)
       } else {
         console.error('Booking failed:', e)
         alert('Something went wrong. Please try again.')
       }
     }
     setSubmitting(false)
+    submittingRef.current = false
   }
 
   // ── Render states ──
