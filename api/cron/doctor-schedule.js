@@ -49,19 +49,6 @@ async function sendScheduleWA(apiKey, to, { doctorName, centreName, dateLabel, a
   }
 }
 
-// ── Current IST half-hour slot e.g. "21:00" or "21:30" ───────────────────────
-function currentISTSlot() {
-  const now = new Date()
-  // IST = UTC + 5:30
-  const istMs  = now.getTime() + (5.5 * 60 * 60 * 1000)
-  const istDate = new Date(istMs)
-  const h  = istDate.getUTCHours()
-  const m  = istDate.getUTCMinutes()
-  // Round down to nearest 30-min slot
-  const slot = m < 30 ? '00' : '30'
-  return `${String(h).padStart(2,'0')}:${slot}`
-}
-
 // ── Tomorrow's date in IST ────────────────────────────────────────────────────
 function tomorrowIST() {
   const now = new Date()
@@ -92,10 +79,9 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  const currentSlot          = currentISTSlot()
   const { dateStr, dateLabel } = tomorrowIST()
 
-  console.log(`[doctor-schedule] slot=${currentSlot} tomorrow=${dateStr}`)
+  console.log(`[doctor-schedule] tomorrow=${dateStr}`)
 
   const results = []
 
@@ -140,15 +126,6 @@ export default async function handler(req, res) {
       for (const doctor of doctors) {
         if (!doctor.phone || doctor.phone.replace(/\D/g,'').length < 10) continue
 
-        // Only fire if this doctor's scheduleNotifyTime matches current 30-min slot
-        const notifyTime = doctor.scheduleNotifyTime || '21:00'
-        // Normalize to HH:MM
-        const [nh, nm] = notifyTime.split(':').map(Number)
-        const slotMin  = nm < 30 ? '00' : '30'
-        const doctorSlot = `${String(nh).padStart(2,'0')}:${slotMin}`
-
-        if (doctorSlot !== currentSlot) continue
-
         // Dedup — skip if already sent today
         const phone = doctor.phone.replace(/\D/g,'')
         if (await alreadySent(centreId, phone, dateStr)) {
@@ -175,12 +152,12 @@ export default async function handler(req, res) {
           total:       docAppts.length,
         })
 
-        results.push({ centreId, doctor: doctor.name, slot: currentSlot, count: docAppts.length })
+        results.push({ centreId, doctor: doctor.name, count: docAppts.length })
       }
     }
 
     console.log('[doctor-schedule] done:', results)
-    return res.status(200).json({ ok: true, slot: currentSlot, fired: results.length, results })
+    return res.status(200).json({ ok: true, fired: results.length, results })
 
   } catch (e) {
     console.error('[doctor-schedule] error:', e)
