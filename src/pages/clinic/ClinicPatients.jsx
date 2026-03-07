@@ -7,6 +7,13 @@ import { Card, CardHeader, Btn, Empty } from '../../components/UI'
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase/config'
 
+function maskPhone(phone) {
+  if (!phone) return ''
+  const p = String(phone).replace(/[^0-9]/g,'')
+  if (p.length < 6) return '••••••'
+  return p.slice(0, 2) + '••••••' + p.slice(-2)
+}
+
 export default function ClinicPatients() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -83,7 +90,7 @@ export default function ClinicPatients() {
                   <td style={{ padding: '13px 18px' }}>
                     <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--navy)' }}>{p.name}</div>
                   </td>
-                  <td style={{ padding: '13px 18px', fontSize: 13, color: 'var(--slate)' }}>{p.phone}</td>
+                  <td style={{ padding: '13px 18px', fontSize: 13, color: 'var(--slate)' }}>{maskPhone(p.phone)}</td>
                   <td style={{ padding: '13px 18px', fontSize: 13, color: 'var(--slate)' }}>
                     {p.age ? `${p.age}y` : '—'} {p.gender ? `· ${p.gender}` : ''}
                   </td>

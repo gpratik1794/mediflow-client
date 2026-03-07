@@ -29,6 +29,13 @@ function ApptBadge({ status }) {
   )
 }
 
+function maskPhone(phone) {
+  if (!phone) return ''
+  const p = String(phone).replace(/[^0-9]/g,'')
+  if (p.length < 6) return '••••••'
+  return p.slice(0, 2) + '••••••' + p.slice(-2)
+}
+
 export default function ClinicDashboard() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
@@ -140,7 +147,7 @@ export default function ClinicDashboard() {
                     </td>
                     <td style={{ padding: '12px 18px' }}>
                       <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--navy)' }}>{a.patientName}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.phone} · {a.age}y</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{maskPhone(a.phone)} · {a.age}y</div>
                     </td>
                     <td style={{ padding: '12px 18px', fontSize: 12, color: 'var(--slate)' }}>
                       {a.visitType || 'New Visit'}
