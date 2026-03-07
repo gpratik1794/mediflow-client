@@ -9,9 +9,12 @@ import { doc, collection, query, where, orderBy, onSnapshot, getDoc } from 'fire
 import { db } from '../../firebase/config'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function getSession() {
-  const h = new Date().getHours()
-  return h < 14 ? 'morning' : 'evening'
+function getSession(morningEnd) {
+  const now = new Date()
+  const currentMins = now.getHours() * 60 + now.getMinutes()
+  const [endH, endM] = (morningEnd || '13:00').split(':').map(Number)
+  const morningEndMins = endH * 60 + endM
+  return currentMins < morningEndMins ? 'morning' : 'evening'
 }
 
 function getTodayStr() {
@@ -29,7 +32,7 @@ export default function TokenDisplay() {
   const { centreId } = useParams()
 
   const [centre, setCentre]           = useState(null)
-  const [session, setSession]         = useState(getSession())
+  const [session, setSession]         = useState(getSession(null))
   const [currentToken, setCurrentToken] = useState(null)
   const [nextTokens, setNextTokens]   = useState([])
   const [waitingCount, setWaitingCount] = useState(0)
@@ -40,14 +43,19 @@ export default function TokenDisplay() {
   const prevTokenRef                  = useRef(null)
   const [flash, setFlash]             = useState(false)
 
-  // Clock tick
+  // Clock tick — re-evaluate session every 30s using clinic's actual morningEnd
   useEffect(() => {
     const t = setInterval(() => {
       setTime(new Date())
-      setSession(getSession())
+      setSession(getSession(centre?.morningEnd))
     }, 30000)
     return () => clearInterval(t)
-  }, [])
+  }, [centre])
+
+  // Set session immediately once centre loads
+  useEffect(() => {
+    if (centre?.morningEnd) setSession(getSession(centre.morningEnd))
+  }, [centre?.morningEnd])
 
   // Load centre profile
   useEffect(() => {
