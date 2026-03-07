@@ -53,9 +53,14 @@ export async function getAppointments(centreId, dateStr) {
     return toMins(a.appointmentTime) - toMins(b.appointmentTime)
   })
 }
-export async function getNextToken(centreId, dateStr) {
+export async function getNextToken(centreId, dateStr, session = null) {
   const appts = await getAppointments(centreId, dateStr)
-  const tokens = appts.filter(a => a.status !== 'cancelled').map(a => a.tokenNumber || 0)
+  const filtered = appts.filter(a => {
+    if (a.status === 'cancelled') return false
+    if (session) return a.session === session
+    return true
+  })
+  const tokens = filtered.map(a => a.tokenNumber || 0)
   return tokens.length > 0 ? Math.max(...tokens) + 1 : 1
 }
 

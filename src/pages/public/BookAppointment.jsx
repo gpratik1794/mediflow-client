@@ -348,11 +348,11 @@ export default function BookAppointment() {
         const conflict = apptSnap.docs.find(d => d.data().appointmentTime === selSlot)
         if (conflict) throw new Error('SLOT_TAKEN')
 
-        // Calculate next token
-        const tokens = apptSnap.docs
-          .filter(d => d.data().status !== 'cancelled')
+        // Calculate next token — per session so evening starts from 1
+        const sessionTokens = apptSnap.docs
+          .filter(d => d.data().status !== 'cancelled' && d.data().session === selSession)
           .map(d => d.data().tokenNumber || 0)
-        tokenNumber = tokens.length > 0 ? Math.max(...tokens) + 1 : 1
+        tokenNumber = sessionTokens.length > 0 ? Math.max(...sessionTokens) + 1 : 1
 
         // Write appointment with all fields matching dashboard expectations
         const newApptRef = doc(collection(db, 'centres', centreId, 'appointments'))

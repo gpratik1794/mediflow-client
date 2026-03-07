@@ -107,8 +107,13 @@ export default function NewAppointment() {
     }
     setLoading(true)
     try {
-      const tokenNumber = await getNextToken(user.uid, form.date)
-      const apptId = await createAppointment(user.uid, { ...form, tokenNumber, status: 'scheduled' })
+      const currentHour = new Date().getHours()
+      const walkinSession = currentHour < 14 ? 'morning' : 'evening'
+      const session = form.appointmentTime === 'Walk-in (no slot)'
+        ? walkinSession
+        : MORNING_SLOTS.includes(form.appointmentTime) ? 'morning' : 'evening'
+      const tokenNumber = await getNextToken(user.uid, form.date, session)
+      const apptId = await createAppointment(user.uid, { ...form, tokenNumber, session, status: 'scheduled' })
       await upsertClinicPatient(user.uid, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
       if (profile?.whatsappCampaigns?.length) {
         sendCampaign(profile.whatsappCampaigns, 'appt_confirm', form.phone,
