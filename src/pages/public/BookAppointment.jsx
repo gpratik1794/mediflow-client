@@ -9,7 +9,7 @@ import { db } from '../../firebase/config'
 import { sendCampaign } from '../../firebase/whatsapp'
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const FALLBACK_NOTIFY_NUMBER = '919876543210' // TODO: replace with Pratik's number
+const FALLBACK_NOTIFY_NUMBER = '919876543210' // kept as last-resort default
 const AISYNERGY_API_URL = 'https://backend.api-wa.co/campaign/aisynergy/api/v2'
 
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -395,7 +395,7 @@ export default function BookAppointment() {
           const msg = `Hi ${name.trim()}, your appointment at ${centreName} is confirmed.\n\nDate: ${dateLabel}\nTime: ${selSlot}${docName ? '\nDoctor: ' + docName : ''}\n\nPlease arrive 5 mins early!`
           await sendPlainWA(apiKey, fullPhone, msg)
           const adminMsg = `🔔 New Online Booking\nClinic: ${centreName}\nPatient: ${name.trim()} (+91${phone})\nDate: ${dateLabel}\nTime: ${selSlot}${docName ? '\nDoctor: ' + docName : ''}\nToken: #${tokenNumber}`
-          await sendPlainWA(apiKey, FALLBACK_NOTIFY_NUMBER, adminMsg)
+          await sendPlainWA(apiKey, centre?.fallbackNotifyNumber || FALLBACK_NOTIFY_NUMBER, adminMsg)
         }
       }
 
