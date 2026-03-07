@@ -434,6 +434,8 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
   const [oDate,   setODate]   = useState('')
   const [oSlots,  setOSlots]  = useState('all')
   const [oSlotsE, setOSlotsE] = useState('all')
+  // Selected day panel
+  const [selectedDay, setSelectedDay] = useState(null) // ds string
 
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa']
@@ -522,11 +524,11 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
           const isToday = ds === todayStr
           return (
             <button key={ds} type="button"
-              onClick={() => { if (!isPast) toggleDate(ds) }}
+              onClick={() => { if (!isPast) setSelectedDay(ds === selectedDay ? null : ds) }}
               disabled={isPast}
               style={{
-                aspectRatio: '1', borderRadius: 8, border: isToday ? '2px solid var(--teal)' : '1.5px solid transparent',
-                background: isPast ? 'var(--bg)' : isOff ? '#FEE2E2' : hasOver ? '#FEF3C7' : 'var(--surface)',
+                aspectRatio: '1', borderRadius: 8, border: ds === selectedDay ? '2px solid var(--teal)' : isToday ? '2px solid var(--teal)' : '1.5px solid transparent',
+                background: isPast ? 'var(--bg)' : isOff ? '#FEE2E2' : hasOver ? '#FEF3C7' : ds === selectedDay ? 'var(--teal-light)' : 'var(--surface)',
                 color: isPast ? 'var(--border)' : isOff ? '#DC2626' : 'var(--navy)',
                 cursor: isPast ? 'not-allowed' : 'pointer',
                 fontSize: 12, fontWeight: isToday ? 700 : 400,
@@ -546,7 +548,7 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
 
       {/* Legend */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        {[['#FEE2E2','#DC2626','Leave / Off'], ['#FEF3C7','#D97706','Slot override'], ['var(--teal-light)','var(--teal)','Today']].map(([bg, col, label]) => (
+        {[['#FEE2E2','#DC2626','Leave / Off'], ['#FEF3C7','#D97706','Slot override'], ['var(--teal-light)','var(--teal)','Today / Selected']].map(([bg, col, label]) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <div style={{ width: 12, height: 12, borderRadius: 3, background: bg, border: `1px solid ${col}` }} />
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</span>
@@ -554,71 +556,136 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
         ))}
       </div>
 
-      {/* Slot overrides — only for non-vacation future dates */}
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🎯 Slot Count Overrides</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.6 }}>
-          Override the default slot count for a specific date (e.g. allow fewer slots on a partial day).
-        </div>
+      {/* Date action panel — shows when a date is clicked */}
+      {selectedDay && (() => {
+        const isOff   = unavail.includes(selectedDay)
+        const cfg     = overrides[selectedDay] || {}
+        const mVal    = cfg.morning || 'all'
+        const eVal    = cfg.evening || 'all'
+        const hasOver = cfg.morning !== undefined || cfg.evening !== undefined
+        const mLabel  = mVal === 'off' ? 'Closed' : mVal === 'all' ? 'All slots' : `${mVal} slots`
+        const eLabel  = eVal === 'off' ? 'Closed' : eVal === 'all' ? 'All slots' : `${eVal} slots`
+        const FMTS    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const [sy, sm, sd] = selectedDay.split('-').map(Number)
+        const dateLabel = `${sd} ${FMTS[sm-1]} ${sy}`
 
-        {/* Existing overrides */}
-        {Object.keys(overrides).length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+        return (
+          <div style={{ border: '1.5px solid var(--teal)', borderRadius: 12, padding: 14, background: 'var(--teal-light)', marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--teal)' }}>📅 {dateLabel}</div>
+              <button type="button" onClick={() => setSelectedDay(null)}
+                style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: 'var(--muted)', lineHeight: 1 }}>✕</button>
+            </div>
+
+            {/* Current status summary */}
+            <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 12, lineHeight: 1.7 }}>
+              {isOff
+                ? <span style={{ color: '#DC2626', fontWeight: 600 }}>🔴 Marked as leave — no bookings allowed on this day.</span>
+                : hasOver
+                  ? <span style={{ color: '#D97706', fontWeight: 600 }}>🟡 Slot override active — 🌅 Morning: {mLabel} · 🌆 Evening: {eLabel}</span>
+                  : <span style={{ color: 'var(--slate)' }}>🟢 Normal working day — all slots available.</span>
+              }
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+
+              {/* Mark / Unmark leave */}
+              {isOff ? (
+                <button type="button"
+                  onClick={() => { toggleDate(selectedDay); setSelectedDay(null) }}
+                  style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid var(--green)', background: 'var(--green-bg)', color: 'var(--green)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                  ✓ Remove leave — mark as working day
+                </button>
+              ) : (
+                <button type="button"
+                  onClick={() => {
+                    if (hasOver) {
+                      if (!window.confirm(`${dateLabel} has a slot override (🌅 ${mLabel} · 🌆 ${eLabel}). Marking as leave will remove all overrides too. Proceed?`)) return
+                    }
+                    toggleDate(selectedDay)
+                    setSelectedDay(null)
+                  }}
+                  style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #DC2626', background: '#FEF2F2', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                  🔴 Mark as leave (full day off)
+                </button>
+              )}
+
+              {/* Slot overrides per session — only if not on leave */}
+              {!isOff && (
+                <div style={{ width: '100%', marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>
+                    🎯 Adjust slot count for this date
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    {['morning','evening'].map(sess => {
+                      const curVal = (sess === 'morning' ? mVal : eVal)
+                      return (
+                        <div key={sess}>
+                          <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                            {sess === 'morning' ? '🌅 Morning' : '🌆 Evening'}
+                          </span>
+                          <select value={curVal}
+                            onChange={e => saveSlotOverride(selectedDay, sess, e.target.value)}
+                            style={{ ...sStyle, width: 120 }}>
+                            <option value="all">All (default)</option>
+                            <option value="off">Off (closed)</option>
+                            {[1,2,3,4,5,6,8,10,12,15,20,25,30].map(n => <option key={n} value={n}>{n} slots</option>)}
+                          </select>
+                        </div>
+                      )
+                    })}
+                    {hasOver && (
+                      <button type="button"
+                        onClick={() => {
+                          const updated = [...doctors]
+                          const newOverrides = { ...overrides }
+                          delete newOverrides[selectedDay]
+                          updated[i] = { ...d, slotOverrides: newOverrides }
+                          onChange(updated)
+                        }}
+                        style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--slate)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
+                        Reset to default
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+                    Changes take effect immediately for new bookings. Existing appointments are not affected.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Active overrides summary — click chip or calendar date to edit */}
+      {(Object.keys(overrides).length > 0 || unavail.filter(dt => dt >= todayStr).length > 0) && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📋 Active Overrides</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {unavail.filter(dt => dt >= todayStr).sort().map(dt => (
+              <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}
+                onClick={() => setSelectedDay(prev => prev === dt ? null : dt)}>
+                <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 600 }}>{dt}</span>
+                <span style={{ fontSize: 11, color: '#DC2626' }}>leave</span>
+              </div>
+            ))}
             {Object.entries(overrides).sort().map(([dt, cfg]) => {
               const mLabel = cfg.morning === 'off' ? 'Off' : cfg.morning === 'all' || !cfg.morning ? 'All' : `${cfg.morning}`
               const eLabel = cfg.evening === 'off' ? 'Off' : cfg.evening === 'all' || !cfg.evening ? 'All' : `${cfg.evening}`
               return (
-                <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 10, padding: '5px 10px' }}>
-                  <span style={{ fontSize: 12, color: '#92400E', fontWeight: 700 }}>{dt}</span>
-                  <span style={{ fontSize: 11, color: '#D97706' }}>🌅 {mLabel}</span>
-                  <span style={{ fontSize: 11, color: '#D97706' }}>🌆 {eLabel}</span>
-                  <button type="button" onClick={() => {
-                    const updated = [...doctors]
-                    const newOverrides = { ...overrides }
-                    delete newOverrides[dt]
-                    updated[i] = { ...d, slotOverrides: newOverrides }
-                    onChange(updated)
-                  }} style={{ background: 'none', border: 'none', color: '#D97706', cursor: 'pointer', padding: '0 2px', fontSize: 13 }}>✕</button>
+                <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}
+                  onClick={() => setSelectedDay(prev => prev === dt ? null : dt)}>
+                  <span style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>{dt}</span>
+                  <span style={{ fontSize: 11, color: '#D97706' }}>🌅{mLabel} 🌆{eLabel}</span>
                 </div>
               )
             })}
           </div>
-        )}
-
-        {/* Add override — per session */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div>
-            <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</span>
-            <input type="date" min={todayStr}
-              value={oDate} onChange={e => setODate(e.target.value)}
-              style={{ ...sStyle, width: 150 }} />
-          </div>
-          {['morning','evening'].map(sess => (
-            <div key={sess}>
-              <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>{sess === 'morning' ? '🌅 Morning' : '🌆 Evening'}</span>
-              <select value={sess === 'morning' ? oSlots : oSlotsE}
-                onChange={e => sess === 'morning' ? setOSlots(e.target.value) : setOSlotsE(e.target.value)}
-                style={{ ...sStyle, width: 110 }}>
-                <option value="all">All (default)</option>
-                <option value="off">Off (closed)</option>
-                {[1,2,3,4,5,6,8,10,12,15,20,25,30].map(n => <option key={n} value={n}>{n} slots</option>)}
-              </select>
-            </div>
-          ))}
-          <button type="button"
-            onClick={() => {
-              if (!oDate) return
-              if (oSlots !== 'all') saveSlotOverride(oDate, 'morning', oSlots)
-              if (oSlotsE !== 'all') saveSlotOverride(oDate, 'evening', oSlotsE)
-              setODate(''); setOSlots('all'); setOSlotsE('all')
-            }}
-            disabled={!oDate}
-            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: oDate ? 'var(--teal)' : 'var(--border)', color: oDate ? 'white' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: oDate ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
-            Set Override
-          </button>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Click any chip or a calendar date to view or edit</div>
         </div>
-      </div>
-    </div>
+      )}    </div>
   )
 }
 
