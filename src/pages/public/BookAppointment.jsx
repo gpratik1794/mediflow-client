@@ -291,7 +291,16 @@ export default function BookAppointment() {
 
   function goNext() {
     if (!canProceed()) return
-    setStep(s => s + 1)
+    const nextStep = step + 1
+    // Auto-select evening if morning is already over (today only)
+    if (nextStep === 3) {
+      const isToday = selDate && selDate.toDateString() === new Date().toDateString()
+      const morningEndH = parseInt((centre?.morningEnd || '13:00').split(':')[0])
+      if (isToday && new Date().getHours() >= morningEndH) {
+        setSelSession('evening')
+      }
+    }
+    setStep(nextStep)
     window.scrollTo(0, 0)
   }
 
@@ -613,17 +622,34 @@ export default function BookAppointment() {
             {/* Session toggle */}
             <div style={{ marginTop: 8, marginBottom: 4, fontSize: 13, fontWeight: 700, color: '#0D2B3E' }}>Choose Session</div>
             <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-              {[
-                { key: 'morning', icon: '🌅', label: 'Morning', time: `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`, count: morningSlots.length },
-                { key: 'evening', icon: '🌆', label: 'Evening', time: `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`, count: eveningSlots.length },
-              ].map(sess => (
-                <div key={sess.key} style={S.sessCard(selSession === sess.key)} onClick={() => { setSelSession(sess.key); setSelSlot(null) }}>
-                  <div style={{ fontSize: 22, marginBottom: 5 }}>{sess.icon}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0D2B3E' }}>{sess.label}</div>
-                  <div style={{ fontSize: 11, color: '#8FA3B0', marginTop: 2 }}>{sess.time}</div>
-                  <div style={{ fontSize: 10, color: '#0B9E8A', fontWeight: 600, marginTop: 5 }}>{sess.count} slots</div>
-                </div>
-              ))}
+              {(() => {
+                const isToday = selDate && selDate.toDateString() === new Date().toDateString()
+                const nowH = new Date().getHours()
+                const morningEndH = parseInt((centre?.morningEnd || '13:00').split(':')[0])
+                const eveningEndH = parseInt((centre?.eveningEnd || '20:00').split(':')[0])
+                const morningPast = isToday && nowH >= morningEndH
+                const eveningPast = isToday && nowH >= eveningEndH
+                return [
+                  { key: 'morning', icon: '🌅', label: 'Morning', time: `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`, count: morningSlots.length, past: morningPast },
+                  { key: 'evening', icon: '🌆', label: 'Evening', time: `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`, count: eveningSlots.length, past: eveningPast },
+                ].map(sess => (
+                  <div key={sess.key}
+                    style={{
+                      ...S.sessCard(selSession === sess.key && !sess.past),
+                      ...(sess.past ? { opacity: 0.45, cursor: 'not-allowed', border: '1.5px solid #E2E8F0', background: '#F8FAFC' } : {})
+                    }}
+                    onClick={() => { if (!sess.past) { setSelSession(sess.key); setSelSlot(null) } }}
+                  >
+                    <div style={{ fontSize: 22, marginBottom: 5 }}>{sess.icon}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: sess.past ? '#8FA3B0' : '#0D2B3E' }}>{sess.label}</div>
+                    <div style={{ fontSize: 11, color: '#8FA3B0', marginTop: 2 }}>{sess.time}</div>
+                    {sess.past
+                      ? <div style={{ fontSize: 10, color: '#DC2626', fontWeight: 600, marginTop: 5 }}>Session over</div>
+                      : <div style={{ fontSize: 10, color: '#0B9E8A', fontWeight: 600, marginTop: 5 }}>{sess.count} slots</div>
+                    }
+                  </div>
+                ))
+              })()}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2.5fr', gap: 10 }}>
