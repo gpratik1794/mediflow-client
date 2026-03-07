@@ -279,7 +279,7 @@ export default function PatientDetail() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
-                  {['Date', 'Time', 'Token', 'Visit Type', 'Status', ''].map(h => (
+                  {['Date', 'Time', 'Token', 'Visit Type', 'Fee', 'Payment', 'Status', ''].map(h => (
                     <th key={h} style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--muted)', fontWeight: 500, borderBottom: '1px solid var(--border)' }}>{h}</th>
                   ))}
                 </tr>
@@ -297,6 +297,20 @@ export default function PatientDetail() {
                       <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--slate)' }}>{a.appointmentTime || '—'}</td>
                       <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: 'var(--teal)' }}>#{a.tokenNumber}</td>
                       <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--slate)' }}>{a.visitType || '—'}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
+                        {a.consultationFee ? `₹${a.consultationFee}` : '—'}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        {a.paymentStatus ? (
+                          <span style={{
+                            fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600,
+                            background: a.paymentStatus === 'paid' ? 'var(--green-bg)' : a.paymentStatus === 'free' ? 'var(--teal-light)' : 'var(--amber-bg)',
+                            color: a.paymentStatus === 'paid' ? 'var(--green)' : a.paymentStatus === 'free' ? 'var(--teal)' : 'var(--amber)'
+                          }}>
+                            {a.paymentStatus === 'paid' ? '✓ Paid' : a.paymentStatus === 'free' ? 'Free' : 'Pending'}
+                          </span>
+                        ) : '—'}
+                      </td>
                       <td style={{ padding: '12px 16px' }}>
                         <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: sc.bg, color: sc.color }}>{a.status}</span>
                       </td>
