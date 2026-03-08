@@ -733,7 +733,6 @@ const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVis
 function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
   const [adding, setAdding]   = useState(false)
   const [draft, setDraft]     = useState(EMPTY_DOCTOR)
-  const [expanded, setExpanded] = useState(null) // index of expanded doctor card
   const [err, setErr]         = useState('')
 
   const iStyle = { width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)', outline: 'none' }
@@ -757,7 +756,6 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
 
   function handleRemove(i) {
     onChange(doctors.filter((_, j) => j !== i))
-    if (expanded === i) setExpanded(null)
   }
 
   function feeLabel(d) {
@@ -769,7 +767,7 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {doctors.length === 0 && (
         <div style={{ textAlign: 'center', padding: '16px', color: 'var(--muted)', fontSize: 13 }}>
           No doctors added yet. Add doctors so patients can select them while booking.
@@ -777,10 +775,10 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
       )}
 
       {doctors.map((d, i) => (
-        <div key={i} style={{ borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', overflow: 'hidden' }}>
-          {/* Doctor row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,var(--teal),var(--teal-dark,#087A6B))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
+        <div key={i} style={{ borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--surface)', overflow: 'hidden' }}>
+          {/* Doctor header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1.5px solid var(--border)', background: '#fff' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg,var(--teal),var(--teal-dark,#087A6B))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
               {d.name.charAt(d.name.lastIndexOf(' ') + 1)}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -790,68 +788,69 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
                 {feeLabel(d) && <span style={{ marginLeft: 6, color: 'var(--teal)' }}>· {feeLabel(d)}</span>}
               </div>
             </div>
-            <button type="button" onClick={() => setExpanded(expanded === i ? null : i)} style={{ background: 'var(--bg)', border: '1.5px solid var(--border)', borderRadius: 8, color: 'var(--slate)', fontSize: 11, fontWeight: 600, padding: '5px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
-              {expanded === i ? '▲ Less' : '▼ Edit'}
-            </button>
             <button type="button" onClick={() => handleRemove(i)} style={{ background: '#FEF2F2', border: 'none', borderRadius: 8, color: '#DC2626', fontSize: 11, fontWeight: 600, padding: '5px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
-              ✕
+              ✕ Remove
             </button>
           </div>
-          {/* Expanded doctor detail */}
-          {expanded === i && (
-            <div style={{ borderTop: '1.5px solid var(--border)', padding: '14px 16px', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Fees */}
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>💰 Consultation Fees</div>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={lStyle}>First Visit Fee (₹)</span>
-                    <input style={sStyle} type="number" min="0"
-                      value={d.firstVisitFee || ''}
-                      onChange={e => { const updated = [...doctors]; updated[i] = { ...d, firstVisitFee: e.target.value }; onChange(updated) }}
-                      placeholder="e.g. 500" />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <span style={lStyle}>Repeat Visit Fee (₹)</span>
-                    <input style={sStyle} type="number" min="0"
-                      value={d.repeatVisitFee || ''}
-                      onChange={e => { const updated = [...doctors]; updated[i] = { ...d, repeatVisitFee: e.target.value }; onChange(updated) }}
-                      placeholder="e.g. 300" />
-                  </div>
+          {/* Always-visible doctor detail */}
+          <div style={{ padding: '16px', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Fees */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>💰 Consultation Fees</div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <span style={lStyle}>First Visit Fee (₹)</span>
+                  <input style={sStyle} type="number" min="0"
+                    value={d.firstVisitFee || ''}
+                    onChange={e => { const updated = [...doctors]; updated[i] = { ...d, firstVisitFee: e.target.value }; onChange(updated) }}
+                    placeholder="e.g. 500" />
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
-                  These fees are shown as defaults when booking an appointment for this doctor. Receptionist can override at time of booking or mark as Free.
+                <div style={{ flex: 1 }}>
+                  <span style={lStyle}>Repeat Visit Fee (₹)</span>
+                  <input style={sStyle} type="number" min="0"
+                    value={d.repeatVisitFee || ''}
+                    onChange={e => { const updated = [...doctors]; updated[i] = { ...d, repeatVisitFee: e.target.value }; onChange(updated) }}
+                    placeholder="e.g. 300" />
                 </div>
               </div>
-              {/* Schedule notification time */}
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📅 Daily Schedule Notification</div>
-                <div>
-                  <span style={lStyle}>Send tomorrow's schedule at</span>
-                  <select style={sStyle}
-                    value={d.scheduleNotifyTime || '21:00'}
-                    onChange={e => { const updated = [...doctors]; updated[i] = { ...d, scheduleNotifyTime: e.target.value }; onChange(updated) }}>
-                    {SCHEDULE_TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
-                    {d.name} will receive tomorrow's appointment schedule on WhatsApp at {SCHEDULE_TIME_OPTIONS.find(o => o.value === (d.scheduleNotifyTime || '21:00'))?.label || '9:00 PM'}.
-                    This includes all appointments booked before {SCHEDULE_TIME_OPTIONS.find(o => o.value === (d.scheduleNotifyTime || '21:00'))?.label || '9:00 PM'}.
-                  </div>
-                </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
+                Shown as defaults when booking. Receptionist can override at time of booking or mark as Free.
               </div>
-              {/* WhatsApp number */}
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📱 WhatsApp Number</div>
-                <input style={sStyle}
-                  value={d.phone || ''}
-                  onChange={e => { const updated = [...doctors]; updated[i] = { ...d, phone: e.target.value.replace(/\D/g,'').slice(0,10) }; onChange(updated) }}
-                  placeholder="10-digit mobile number" maxLength={10} />
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Used to send daily schedule notifications to this doctor.</div>
+            </div>
+            {/* Schedule notification time */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📅 Daily Schedule Notification</div>
+              <span style={lStyle}>Send tomorrow's schedule at</span>
+              <select style={sStyle}
+                value={d.scheduleNotifyTime || '21:00'}
+                onChange={e => { const updated = [...doctors]; updated[i] = { ...d, scheduleNotifyTime: e.target.value }; onChange(updated) }}>
+                {SCHEDULE_TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
+                {d.name} will receive tomorrow's appointment schedule on WhatsApp at {SCHEDULE_TIME_OPTIONS.find(o => o.value === (d.scheduleNotifyTime || '21:00'))?.label || '9:00 PM'}.
               </div>
-              {/* Availability — vacation dates + slot overrides */}
+            </div>
+            {/* WhatsApp number */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📱 WhatsApp Number</div>
+              <input style={sStyle}
+                value={d.phone || ''}
+                onChange={e => { const updated = [...doctors]; updated[i] = { ...d, phone: e.target.value.replace(/\D/g,'').slice(0,10) }; onChange(updated) }}
+                placeholder="10-digit mobile number" maxLength={10} />
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Used to send daily schedule notifications to this doctor.</div>
+            </div>
+            {/* Availability — vacation dates + slot overrides */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📆 Availability & Slot Overrides</div>
               <DoctorAvailability doctor={d} doctorIndex={i} doctors={doctors} onChange={onChange} onSaveDoctors={onSaveDoctors} />
             </div>
-          )}
+            {/* Save button per doctor */}
+            <button type="button"
+              onClick={() => onSaveDoctors && onSaveDoctors(doctors)}
+              style={{ width: '100%', padding: '10px', borderRadius: 9, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+              💾 Save {d.name}
+            </button>
+          </div>
         </div>
       ))}
 
