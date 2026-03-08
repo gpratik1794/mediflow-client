@@ -321,7 +321,7 @@ export default function BookAppointment() {
     ? selDocObj.slotOverrides[selDateStr]
     : null
 
-  // Per-session override: { morning: 5, evening: 'off'|'all'|N }
+  // Per-session override: { morning: 5, evening: 'off'|'all'|N, morningStart: 'HH:MM', eveningStart: 'HH:MM' }
   const getSessionOverride = (sess) => {
     const cfg = selDateStr && selDocObj?.slotOverrides?.[selDateStr]
     if (!cfg) return null
@@ -332,14 +332,31 @@ export default function BookAppointment() {
   }
   const morningOverride = getSessionOverride('morning')
   const eveningOverride = getSessionOverride('evening')
-  const applyOverride = (slots, override) => {
+
+  // Get custom start time for a session on selected date
+  const getSessionStartOverride = (sess) => {
+    const cfg = selDateStr && selDocObj?.slotOverrides?.[selDateStr]
+    if (!cfg) return null
+    return sess === 'morning' ? (cfg.morningStart || null) : (cfg.eveningStart || null)
+  }
+
+  const applyOverride = (slots, override, sessKey) => {
     if (override === 'off') return []
-    if (override) return slots.slice(0, override)
-    return slots
+    const customStart = getSessionStartOverride(sessKey)
+    let result = slots
+    if (customStart) {
+      // Find first slot >= customStart and slice from there
+      const startMins = timeToMinutes(customStart)
+      const idx = result.findIndex(s => timeToMinutes(s) >= startMins)
+      result = idx >= 0 ? result.slice(idx) : []
+    }
+    if (override) return result.slice(0, override)
+    return result
   }
   const currentSlots = applyOverride(
     selSession === 'morning' ? morningSlots : eveningSlots,
-    selSession === 'morning' ? morningOverride : eveningOverride
+    selSession === 'morning' ? morningOverride : eveningOverride,
+    selSession
   )
 
   // ── Date chips ──
@@ -769,11 +786,11 @@ export default function BookAppointment() {
                 const eveningPast = isToday && nowH >= eveningEndH
                 const ds2 = selDate ? selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0') : null
                 const bc = ds2 ? (dateBookedCounts[ds2] || { morning: 0, evening: 0 }) : { morning: 0, evening: 0 }
-                const mAvail = morningOverride === 'off' ? 0 : Math.max(0, applyOverride(morningSlots, morningOverride).length - bc.morning)
-                const eAvail = eveningOverride === 'off' ? 0 : Math.max(0, applyOverride(eveningSlots, eveningOverride).length - bc.evening)
+                const mAvail = morningOverride === 'off' ? 0 : Math.max(0, applyOverride(morningSlots, morningOverride, 'morning').length - bc.morning)
+                const eAvail = eveningOverride === 'off' ? 0 : Math.max(0, applyOverride(eveningSlots, eveningOverride, 'evening').length - bc.evening)
                 const sessions = [
-                  { key: 'morning', icon: '🌅', label: 'Morning', time: `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`, avail: mAvail, total: applyOverride(morningSlots, morningOverride).length, off: morningOverride === 'off', past: morningPast },
-                  { key: 'evening', icon: '🌆', label: 'Evening', time: `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`, avail: eAvail, total: applyOverride(eveningSlots, eveningOverride).length, off: eveningOverride === 'off', past: eveningPast },
+                  { key: 'morning', icon: '🌅', label: 'Morning', time: (() => { const s = getSessionStartOverride('morning'); const def = `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`; return s && morningOverride !== 'off' ? `${s} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}` : def })(), avail: mAvail, total: applyOverride(morningSlots, morningOverride, 'morning').length, off: morningOverride === 'off', past: morningPast },
+                  { key: 'evening', icon: '🌆', label: 'Evening', time: (() => { const s = getSessionStartOverride('evening'); const def = `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`; return s && eveningOverride !== 'off' ? `${s} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}` : def })(), avail: eAvail, total: applyOverride(eveningSlots, eveningOverride, 'evening').length, off: eveningOverride === 'off', past: eveningPast },
                 ]
                 return sessions.map(sess => (
                   <div key={sess.key}

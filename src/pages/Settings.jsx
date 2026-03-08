@@ -424,9 +424,11 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onCl
   const dateLabel = `${sd} ${FMTS[sm-1]} ${sy}`
   const isOff   = unavail.includes(ds)
   const cfg     = overrides[ds] || {}
-  const mVal    = cfg.morning || 'all'
-  const eVal    = cfg.evening || 'all'
-  const hasOver = cfg.morning !== undefined || cfg.evening !== undefined
+  const mVal    = cfg.morning   || 'all'
+  const eVal    = cfg.evening   || 'all'
+  const mStart  = cfg.morningStart  || ''
+  const eStart  = cfg.eveningStart  || ''
+  const hasOver = cfg.morning !== undefined || cfg.evening !== undefined || cfg.morningStart || cfg.eveningStart
   const mLabel  = mVal === 'off' ? 'Closed' : mVal === 'all' ? 'All slots' : `${mVal} slots`
   const eLabel  = eVal === 'off' ? 'Closed' : eVal === 'all' ? 'All slots' : `${eVal} slots`
   const sStyle  = { width: '100%', padding: '8px 10px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }
@@ -434,7 +436,7 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onCl
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>📅 {dateLabel}</div>
@@ -446,7 +448,7 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onCl
           background: isOff ? '#FEF2F2' : hasOver ? '#FFFBEB' : 'var(--teal-light)',
           color: isOff ? '#DC2626' : hasOver ? '#D97706' : 'var(--teal)', fontWeight: 600 }}>
           {isOff ? '🔴 Marked as leave — no bookings allowed'
-           : hasOver ? `🟡 Override active — 🌅 ${mLabel} · 🌆 ${eLabel}`
+           : hasOver ? `🟡 Override active — 🌅 ${mLabel}${mStart ? ` from ${mStart}` : ''} · 🌆 ${eLabel}${eStart ? ` from ${eStart}` : ''}`
            : '🟢 Normal working day — all slots available'}
         </div>
 
@@ -468,28 +470,48 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onCl
         {/* Slot overrides — only if not on leave */}
         {!isOff && (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 10 }}>🎯 Slot count for this date</div>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-              {['morning', 'evening'].map(sess => {
-                const cur = sess === 'morning' ? mVal : eVal
-                return (
-                  <div key={sess} style={{ flex: 1 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                      {sess === 'morning' ? '🌅 Morning' : '🌆 Evening'}
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 10 }}>🎯 Slot override for this date</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 12 }}>
+              {[
+                { key: 'morning', label: '🌅 Morning', val: mVal, startVal: mStart, startKey: 'morningStart' },
+                { key: 'evening', label: '🌆 Evening', val: eVal, startVal: eStart, startKey: 'eveningStart' },
+              ].map(({ key, label, val, startVal, startKey }) => (
+                <div key={key} style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--slate)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>Available slots</div>
+                      <select value={val} onChange={e => onSlotOverride(ds, key, e.target.value)} style={sStyle}>
+                        <option value="all">All (default)</option>
+                        <option value="off">Off (closed)</option>
+                        {[1,2,3,4,5,6,8,10,12,15,20,25,30].map(n => <option key={n} value={n}>{n} slots</option>)}
+                      </select>
                     </div>
-                    <select value={cur} onChange={e => onSlotOverride(ds, sess, e.target.value)} style={sStyle}>
-                      <option value="all">All (default)</option>
-                      <option value="off">Off (closed)</option>
-                      {[1,2,3,4,5,6,8,10,12,15,20,25,30].map(n => <option key={n} value={n}>{n} slots</option>)}
-                    </select>
+                    {val !== 'off' && (
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>Doctor start time <span style={{ color: '#D97706' }}>(optional)</span></div>
+                        <input
+                          type="time"
+                          value={startVal}
+                          onChange={e => onSlotOverride(ds, startKey, e.target.value || null)}
+                          style={sStyle}
+                          placeholder="Clinic default"
+                        />
+                      </div>
+                    )}
                   </div>
-                )
-              })}
+                  {startVal && val !== 'off' && (
+                    <div style={{ fontSize: 10, color: '#D97706', marginTop: 6 }}>
+                      ⚡ Slots will start at {startVal} instead of the clinic default
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
             {hasOver && (
               <button type="button" onClick={() => { onSlotOverride(ds, '_reset', null); onClose() }}
                 style={{ width: '100%', padding: '8px', borderRadius: 9, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--slate)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
-                Reset to default slots
+                Reset to clinic defaults
               </button>
             )}
           </div>
@@ -501,6 +523,7 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onCl
     </div>
   )
 }
+
 
 function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
   const today = new Date(); today.setHours(0,0,0,0)
@@ -535,12 +558,33 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
     const newOverrides = { ...overrides }
     if (session === '_reset') {
       delete newOverrides[ds]
+    } else if (session === 'morningStart' || session === 'eveningStart') {
+      // Start time override — store or clear
+      const existing = newOverrides[ds] || {}
+      if (!val) {
+        const { [session]: _, ...rest } = existing
+        if (Object.keys(rest).length === 0) delete newOverrides[ds]
+        else newOverrides[ds] = rest
+      } else {
+        newOverrides[ds] = { ...existing, [session]: val }
+      }
     } else {
       const existing = newOverrides[ds] || {}
       if (val === 'all') {
+        // Check if anything else is set; if nothing meaningful remains, clean up
+        const { [session]: _, morningStart, eveningStart, ...rest } = existing
         const other = session === 'morning' ? existing.evening : existing.morning
-        if (!other || other === 'all') { delete newOverrides[ds] }
-        else { newOverrides[ds] = { ...existing, [session]: 'all' } }
+        const otherStart = session === 'morning' ? existing.eveningStart : existing.morningStart
+        const myStart = session === 'morning' ? existing.morningStart : existing.eveningStart
+        // Remove this session's startTime too if resetting to 'all'
+        const removeKey = session === 'morning' ? 'morningStart' : 'eveningStart'
+        const cleaned = { ...existing }; delete cleaned[session]; delete cleaned[removeKey]
+        if (!other || other === 'all') {
+          if (!otherStart && Object.keys(cleaned).length === 0) delete newOverrides[ds]
+          else newOverrides[ds] = cleaned
+        } else {
+          newOverrides[ds] = { ...cleaned }
+        }
       } else {
         newOverrides[ds] = { ...existing, [session]: val === 'off' ? 'off' : parseInt(val) || 'all' }
       }
@@ -580,26 +624,47 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
           const ds      = toStr(calYear, calMonth, day)
           const isPast  = ds < todayStr
           const isOff   = unavail.includes(ds)
-          const hasOver = overrides[ds] && (overrides[ds].morning !== undefined || overrides[ds].evening !== undefined)
+          const ov      = overrides[ds] || {}
+          const hasOver = isOff ? false : !!(ov.morning !== undefined || ov.evening !== undefined || ov.morningStart || ov.eveningStart)
           const isToday = ds === todayStr
+          // Build pill label
+          let pillLabel = null; let pillColor = null
+          if (isOff) { pillLabel = 'leave'; pillColor = '#DC2626' }
+          else if (hasOver) {
+            const parts = []
+            if (ov.morning === 'off') parts.push('AM off')
+            else if (ov.morning && ov.morning !== 'all') parts.push(`AM:${ov.morning}`)
+            if (ov.evening === 'off') parts.push('PM off')
+            else if (ov.evening && ov.evening !== 'all') parts.push(`PM:${ov.evening}`)
+            if (ov.morningStart) parts.push(`AM@${ov.morningStart}`)
+            if (ov.eveningStart) parts.push(`PM@${ov.eveningStart}`)
+            pillLabel = parts.length ? parts[0] : 'override'
+            pillColor = '#D97706'
+          }
           return (
             <button key={ds} type="button"
               onClick={() => { if (!isPast) setModalDay(ds) }}
               disabled={isPast}
-              title={isOff ? 'Leave' : hasOver ? 'Override set' : isToday ? 'Today' : 'Click to configure'}
+              title={isOff ? 'Leave' : hasOver ? 'Override set — click to edit' : isToday ? 'Today' : 'Click to configure'}
               style={{
-                padding: '4px 0', borderRadius: 5,
-                border: isToday ? '1.5px solid var(--teal)' : '1.5px solid transparent',
+                padding: '3px 1px 4px', borderRadius: 5,
+                border: isToday ? '1.5px solid var(--teal)' : isOff ? '1.5px solid #FECACA' : hasOver ? '1.5px solid #FCD34D' : '1.5px solid transparent',
                 background: isPast ? 'transparent' : isOff ? '#FEE2E2' : hasOver ? '#FEF3C7' : 'var(--surface)',
                 color: isPast ? 'var(--border)' : isOff ? '#DC2626' : 'var(--navy)',
                 cursor: isPast ? 'default' : 'pointer',
                 fontSize: 11, fontWeight: isToday ? 700 : 400,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexDirection: 'column', gap: 0, lineHeight: 1.2
+                flexDirection: 'column', gap: 0, lineHeight: 1.2, minHeight: 30,
               }}>
               {day}
-              {isOff && <span style={{ fontSize: 7, color: '#DC2626', fontWeight: 700 }}>off</span>}
-              {hasOver && !isOff && <span style={{ fontSize: 7, color: '#D97706', fontWeight: 700 }}>~</span>}
+              {pillLabel && (
+                <span style={{
+                  fontSize: 6, fontWeight: 700, color: pillColor,
+                  background: isOff ? '#FECACA' : '#FDE68A',
+                  borderRadius: 3, padding: '0 2px', marginTop: 1,
+                  maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                }}>{pillLabel}</span>
+              )}
             </button>
           )
         })}
