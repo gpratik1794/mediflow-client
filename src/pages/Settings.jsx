@@ -853,7 +853,16 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSa
 }
 
 
-const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
+const EMPTY_DOCTOR = {
+  name: '', degree: '', speciality: '', phone: '',
+  firstVisitFee: '', repeatVisitFee: '',
+  scheduleNotifyTime: '21:00',
+  morningStart: '09:00', morningEnd: '13:00',
+  eveningStart: '16:00', eveningEnd: '20:00',
+  slotDuration: '30',
+  weeklyOff: [],
+  lateCheckinPenalty: '0',
+}
 
 function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor, centreId, bookingUrl, campaigns, aisynergyApiKey, centreName }) {
   const [adding, setAdding]   = useState(false)
@@ -874,6 +883,13 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor, cent
       firstVisitFee: draft.firstVisitFee.trim(),
       repeatVisitFee: draft.repeatVisitFee.trim(),
       scheduleNotifyTime: draft.scheduleNotifyTime || '21:00',
+      morningStart: draft.morningStart || '09:00',
+      morningEnd:   draft.morningEnd   || '13:00',
+      eveningStart: draft.eveningStart || '16:00',
+      eveningEnd:   draft.eveningEnd   || '20:00',
+      slotDuration: draft.slotDuration || '30',
+      weeklyOff:    draft.weeklyOff    || [],
+      lateCheckinPenalty: draft.lateCheckinPenalty || '0',
     }])
     setDraft(EMPTY_DOCTOR)
     setAdding(false); setErr('')
@@ -922,6 +938,92 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor, cent
           </div>
           {/* Always-visible doctor detail */}
           <div style={{ padding: '16px', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* ── Scheduling ── */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🕐 Schedule & Sessions</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* Slot Duration */}
+                <div>
+                  <span style={lStyle}>Slot Duration</span>
+                  <select style={sStyle}
+                    value={d.slotDuration || '30'}
+                    onChange={e => { const updated = [...doctors]; updated[i] = { ...d, slotDuration: e.target.value }; onChange(updated) }}>
+                    {[['5','5 min'],['10','10 min'],['15','15 min'],['20','20 min'],['30','30 min'],['60','60 min']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                {/* Morning session */}
+                <div style={{ background: 'var(--surface)', borderRadius: 9, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#D97706', marginBottom: 8 }}>🌅 Morning Session</div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={lStyle}>Start</span>
+                      <input type="time" style={sStyle} value={d.morningStart || '09:00'}
+                        onChange={e => { const updated = [...doctors]; updated[i] = { ...d, morningStart: e.target.value }; onChange(updated) }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={lStyle}>End</span>
+                      <input type="time" style={sStyle} value={d.morningEnd || '13:00'}
+                        onChange={e => { const updated = [...doctors]; updated[i] = { ...d, morningEnd: e.target.value }; onChange(updated) }} />
+                    </div>
+                  </div>
+                </div>
+                {/* Evening session */}
+                <div style={{ background: 'var(--surface)', borderRadius: 9, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#7C3AED', marginBottom: 8 }}>🌆 Evening Session</div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={lStyle}>Start</span>
+                      <input type="time" style={sStyle} value={d.eveningStart || '16:00'}
+                        onChange={e => { const updated = [...doctors]; updated[i] = { ...d, eveningStart: e.target.value }; onChange(updated) }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={lStyle}>End</span>
+                      <input type="time" style={sStyle} value={d.eveningEnd || '20:00'}
+                        onChange={e => { const updated = [...doctors]; updated[i] = { ...d, eveningEnd: e.target.value }; onChange(updated) }} />
+                    </div>
+                  </div>
+                </div>
+                {/* Late check-in penalty */}
+                <div>
+                  <span style={lStyle}>Late Check-in Queue Penalty</span>
+                  <select style={sStyle}
+                    value={d.lateCheckinPenalty || '0'}
+                    onChange={e => { const updated = [...doctors]; updated[i] = { ...d, lateCheckinPenalty: e.target.value }; onChange(updated) }}>
+                    <option value="0">No penalty — go next in line</option>
+                    <option value="1">Wait 1 patient</option>
+                    <option value="2">Wait 2 patients</option>
+                    <option value="3">Wait 3 patients</option>
+                    <option value="5">Wait 5 patients</option>
+                  </select>
+                </div>
+                {/* Weekly Off */}
+                <div>
+                  <span style={lStyle}>Weekly Off</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, idx) => {
+                      const isOff = (d.weeklyOff || []).includes(idx)
+                      return (
+                        <button key={day} type="button"
+                          onClick={() => {
+                            const curr = d.weeklyOff || []
+                            const updated = [...doctors]; updated[i] = { ...d, weeklyOff: isOff ? curr.filter(x => x !== idx) : [...curr, idx] }; onChange(updated)
+                          }}
+                          style={{ padding: '5px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                            border: `1.5px solid ${isOff ? '#DC2626' : 'var(--border)'}`,
+                            background: isOff ? '#FEF2F2' : 'var(--surface)', color: isOff ? '#DC2626' : 'var(--slate)' }}>
+                          {day}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {(d.weeklyOff || []).length > 0 && (
+                    <div style={{ marginTop: 5, fontSize: 11, color: '#DC2626', fontWeight: 500 }}>
+                      Off: {(d.weeklyOff || []).sort((a,b)=>a-b).map(x => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][x]).join(', ')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
             {/* Fees */}
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>💰 Consultation Fees</div>
@@ -1252,16 +1354,9 @@ export default function Settings() {
     centreType:        'diagnostic',
     gst:               '0',
     gstNumber:         '',
-    slotDuration:      '30',
     whatsappCampaigns: [],
     aisynergyApiKey: '',
-    lateCheckinPenalty: '0',
-    weeklyOff: [],
     doctors: [],
-    morningStart: '09:00',
-    morningEnd:   '13:00',
-    eveningStart: '16:00',
-    eveningEnd:   '20:00',
     vaccinationReminderDays: '7,3,1',
     fallbackNotifyNumber: '',
   })
@@ -1278,16 +1373,9 @@ export default function Settings() {
         centreType:        profile.centreType        || 'diagnostic',
         gst:               profile.gst               || '0',
         gstNumber:         profile.gstNumber         || '',
-        slotDuration:      profile.slotDuration      || '30',
         whatsappCampaigns: profile.whatsappCampaigns || [],
         aisynergyApiKey:    profile.aisynergyApiKey    || '',
-        lateCheckinPenalty: profile.lateCheckinPenalty || '0',
-        weeklyOff:           profile.weeklyOff          || [],
         doctors:             profile.doctors             || [],
-        morningStart: profile.morningStart || '09:00',
-        morningEnd:   profile.morningEnd   || '13:00',
-        eveningStart: profile.eveningStart || '16:00',
-        eveningEnd:   profile.eveningEnd   || '20:00',
         vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
         fallbackNotifyNumber: profile.fallbackNotifyNumber || '',
       }))
@@ -1314,7 +1402,7 @@ export default function Settings() {
   }
 
   function handleSaveCentreInfo()          { saveFields({ centreName: form.centreName, ownerName: form.ownerName, phone: form.phone, city: form.city, address: form.address }) }
-  function handleSaveClinicSettings()      { saveFields({ slotDuration: form.slotDuration, lateCheckinPenalty: form.lateCheckinPenalty, weeklyOff: form.weeklyOff, morningStart: form.morningStart, morningEnd: form.morningEnd, eveningStart: form.eveningStart, eveningEnd: form.eveningEnd, fallbackNotifyNumber: form.fallbackNotifyNumber }) }
+  function handleSaveClinicSettings()      { saveFields({ fallbackNotifyNumber: form.fallbackNotifyNumber }) }
   function handleSaveBilling()             { saveFields({ gst: form.gst, gstNumber: form.gstNumber }) }
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
   function handleSaveDoctors()             { saveFields({ doctors: form.doctors }) }
@@ -1498,68 +1586,9 @@ export default function Settings() {
         {activeTab === 'clinic' && isClinic && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <Section title="Appointment Settings">
-              <Select label="Slot Duration" value={form.slotDuration} onChange={setF('slotDuration')}
-                options={[
-                  { value: '5',  label: '5 minutes (12 slots/hour)' },
-                  { value: '10', label: '10 minutes (6 slots/hour)' },
-                  { value: '15', label: '15 minutes (4 slots/hour)' },
-                  { value: '20', label: '20 minutes (3 slots/hour)' },
-                  { value: '30', label: '30 minutes (2 slots/hour)' },
-                  { value: '60', label: '60 minutes (1 slot/hour)' },
-                ]}
-              />
-              <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>🌅 Morning Session</div>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <Input label="Start" type="time" value={form.morningStart} onChange={setF('morningStart')} />
-                  <Input label="End"   type="time" value={form.morningEnd}   onChange={setF('morningEnd')} />
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginTop: 4 }}>🌆 Evening Session</div>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <Input label="Start" type="time" value={form.eveningStart} onChange={setF('eveningStart')} />
-                  <Input label="End"   type="time" value={form.eveningEnd}   onChange={setF('eveningEnd')} />
-                </div>
+              <div style={{ background: '#F0F9FF', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: '#0369A1', lineHeight: 1.8 }}>
+                💡 Slot duration, session timings, weekly off, and late check-in penalty are now configured <strong>per doctor</strong> in the Doctors tab. Each doctor can have their own independent schedule.
               </div>
-
-              <Select label="Late Check-in Queue Penalty" value={form.lateCheckinPenalty} onChange={setF('lateCheckinPenalty')}
-                options={[
-                  { value: '0', label: 'No penalty — go next in line immediately' },
-                  { value: '1', label: 'Wait 1 patient' },
-                  { value: '2', label: 'Wait 2 patients' },
-                  { value: '3', label: 'Wait 3 patients' },
-                  { value: '5', label: 'Wait 5 patients' },
-                ]}
-              />
-
-              <div>
-                <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>Weekly Off Days</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, idx) => {
-                    const isOff = (form.weeklyOff || []).includes(idx)
-                    return (
-                      <button key={day} type="button"
-                        onClick={() => {
-                          const current = form.weeklyOff || []
-                          setForm(f => ({ ...f, weeklyOff: isOff ? current.filter(d => d !== idx) : [...current, idx] }))
-                        }}
-                        style={{ padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
-                          border: `1.5px solid ${isOff ? 'var(--red, #DC2626)' : 'var(--border)'}`,
-                          background: isOff ? '#FEF2F2' : 'var(--surface)', color: isOff ? '#DC2626' : 'var(--slate)' }}>
-                        {day}
-                      </button>
-                    )
-                  })}
-                </div>
-                {(form.weeklyOff || []).length > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#DC2626', fontWeight: 500 }}>
-                    🚫 Closed on: {(form.weeklyOff || []).sort((a,b)=>a-b).map(d => ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d]).join(', ')}
-                  </div>
-                )}
-              </div>
-
-              <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-                {saving ? 'Saving…' : '💾 Save Clinic Settings'}
-              </Btn>
             </Section>
 
             {profile?.modules?.vaccination && (

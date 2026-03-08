@@ -20,7 +20,15 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 function timeToMinutes(t) {
   if (!t) return 0
-  const [h, m] = t.split(':').map(Number)
+  // Handle both '14:30' (24h) and '2:30 PM' (12h AM/PM) formats
+  const parts = t.trim().split(' ')
+  const [hStr, mStr] = parts[0].split(':')
+  let h = parseInt(hStr), m = parseInt(mStr) || 0
+  if (parts[1]) {
+    // 12h format
+    if (parts[1] === 'PM' && h !== 12) h += 12
+    if (parts[1] === 'AM' && h === 12) h = 0
+  }
   return h * 60 + m
 }
 
@@ -232,10 +240,13 @@ export default function BookAppointment() {
             setSelDate(prev => {
               if (prev) return prev
               const today = new Date()
-              const weeklyOff = data.weeklyOff || []
+              const firstDoc = (data.doctors || [])[0]
+              const weeklyOff = firstDoc?.weeklyOff || data.weeklyOff || []
+              const unavailDates = firstDoc?.unavailableDates || []
               for (let i = 0; i < 14; i++) {
                 const d = new Date(today); d.setDate(today.getDate() + i)
-                if (!weeklyOff.includes(d.getDay())) return d
+                const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+                if (!weeklyOff.includes(d.getDay()) && !unavailDates.includes(ds)) return d
               }
               return today
             })
@@ -298,6 +309,9 @@ export default function BookAppointment() {
       snap.docs.forEach(docSnap => {
         const { date, appointmentTime, status, doctorName } = docSnap.data()
         if (!date || !appointmentTime || appointmentTime === 'Walk-in (no slot)' || status === 'cancelled') return
+        // Only count appointments for the currently selected doctor
+        const selDocName = selDoc?.name || selDoc
+        if (selDocName && doctorName && doctorName !== selDocName) return
         if (!counts[date]) counts[date] = { morning: 0, evening: 0 }
         // Parse hour of booked slot
         const parts = appointmentTime.split(' ')
@@ -305,15 +319,17 @@ export default function BookAppointment() {
         const period = parts[1]; const h = parseInt(parts[0].split(':')[0]); const m = parseInt(parts[0].split(':')[1] || '0')
         const hour24 = period === 'PM' && h !== 12 ? h + 12 : (period === 'AM' && h === 12 ? 0 : h)
         const slotMins = hour24 * 60 + m
-        // Get this doctor's override for the date
+        // Get this doctor's override and their own session times
         const docObj = selDoc ? doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc)) : null
         const overCfg = docObj?.slotOverrides?.[date] || {}
         const mStartStr = overCfg.morningStart
         const eStartStr = overCfg.eveningStart
-        // For morning: only count if >= morningStart override (or default clinic morning start)
-        const morningStartMins = mStartStr ? timeToMinutes(mStartStr) : timeToMinutes(centre?.morningStart || '09:00')
-        const morningEndMins = timeToMinutes(centre?.morningEnd || '13:00')
-        const eveningStartMins = eStartStr ? timeToMinutes(eStartStr) : timeToMinutes(centre?.eveningStart || '16:00')
+        const docMStart = docObj?.morningStart || centre?.morningStart || '09:00'
+        const docMEnd   = docObj?.morningEnd   || centre?.morningEnd   || '13:00'
+        const docEStart = docObj?.eveningStart || centre?.eveningStart || '16:00'
+        const morningStartMins = mStartStr ? timeToMinutes(mStartStr) : timeToMinutes(docMStart)
+        const morningEndMins   = timeToMinutes(docMEnd)
+        const eveningStartMins = eStartStr ? timeToMinutes(eStartStr) : timeToMinutes(docEStart)
         if (slotMins >= morningStartMins && slotMins < morningEndMins) counts[date].morning++
         else if (slotMins >= eveningStartMins) counts[date].evening++
       })
@@ -321,14 +337,18 @@ export default function BookAppointment() {
     }, (e) => console.warn('dateBookedCounts:', e))
   }, [centreId, selDoc, centre, doctors])
 
-  // ── Derived slot lists ──
-  const duration    = parseInt(centre?.slotDuration || '30')
-  const morningSlots = centre ? generateSlots(centre.morningStart || '09:00', centre.morningEnd || '13:00', duration) : []
-  const eveningSlots = centre ? generateSlots(centre.eveningStart || '16:00', centre.eveningEnd || '20:00', duration) : []
+  // ── Derived slot lists — use doctor's own timing, fall back to clinic defaults ──
+  const selDocObj  = doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc))
+  const duration    = parseInt(selDocObj?.slotDuration || centre?.slotDuration || '30')
+  const docMorningStart = selDocObj?.morningStart || centre?.morningStart || '09:00'
+  const docMorningEnd   = selDocObj?.morningEnd   || centre?.morningEnd   || '13:00'
+  const docEveningStart = selDocObj?.eveningStart || centre?.eveningStart || '16:00'
+  const docEveningEnd   = selDocObj?.eveningEnd   || centre?.eveningEnd   || '20:00'
+  const morningSlots = generateSlots(docMorningStart, docMorningEnd, duration)
+  const eveningSlots = generateSlots(docEveningStart, docEveningEnd, duration)
 
   // Apply per-date slot override for selected doctor
   const selDateStr = selDate ? selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0') : null
-  const selDocObj  = doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc))
   const slotOverride = selDateStr && selDocObj?.slotOverrides?.[selDateStr]
     ? selDocObj.slotOverrides[selDateStr]
     : null
@@ -375,9 +395,8 @@ export default function BookAppointment() {
   const dateChips = (() => {
     const chips = []
     const today = new Date()
-    const weeklyOff = centre?.weeklyOff || []
-    // Get selected doctor's unavailable dates
-    const selDocObj = doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc))
+    // Use doctor's own weeklyOff, fallback to centre weeklyOff
+    const weeklyOff = selDocObj?.weeklyOff || centre?.weeklyOff || []
     const unavailDates = selDocObj?.unavailableDates || []
     for (let i = 0; i < 14; i++) {
       const d = new Date(today); d.setDate(today.getDate() + i)
@@ -420,11 +439,11 @@ export default function BookAppointment() {
     if (step === 2) return doctors.length === 0 || selDoc !== null
     if (step === 3) {
       if (!selDate) return false
-      const weeklyOff = centre?.weeklyOff || []
-      if (weeklyOff.includes(selDate.getDay())) return false
-      const selDocObj2 = doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc))
+      // Use doctor's own weeklyOff, fall back to centre weeklyOff
+      const docWeeklyOff = selDocObj?.weeklyOff || centre?.weeklyOff || []
+      if (docWeeklyOff.includes(selDate.getDay())) return false
       const dateStr2 = selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0')
-      if (selDocObj2?.unavailableDates?.includes(dateStr2)) return false
+      if (selDocObj?.unavailableDates?.includes(dateStr2)) return false
       return true
     }
     if (step === 4) return selSlot !== null
@@ -434,10 +453,10 @@ export default function BookAppointment() {
   function goNext() {
     if (!canProceed()) return
     const nextStep = step + 1
-    // Auto-select evening if morning is already over (today only)
+    // Auto-select evening if morning is already over (today only) — use doctor's morningEnd
     if (nextStep === 3) {
       const isToday = selDate && selDate.toDateString() === new Date().toDateString()
-      const morningEndH = parseInt((centre?.morningEnd || '13:00').split(':')[0])
+      const morningEndH = parseInt((selDocObj?.morningEnd || centre?.morningEnd || '13:00').split(':')[0])
       if (isToday && new Date().getHours() >= morningEndH) {
         setSelSession('evening')
       }
@@ -505,15 +524,15 @@ export default function BookAppointment() {
         if (duplicate) throw new Error('ALREADY_BOOKED')
 
         // Calculate next token — per session using time-based detection
-        // Works even for old appointments that don't have session field
+        const docMEndMins = timeToMinutes(selDocObj?.morningEnd || centre?.morningEnd || '13:00')
         const getApptSession = (apptTime) => {
           if (!apptTime || apptTime === 'Walk-in (no slot)') return null
           const parts = apptTime.trim().split(' ')
           const hm = parts[0].split(':')
-          let h = Number(hm[0])
+          let h = Number(hm[0]); const m = Number(hm[1] || 0)
           if (parts[1] === 'PM' && h !== 12) h += 12
           if (parts[1] === 'AM' && h === 12) h = 0
-          return h < 14 ? 'morning' : 'evening'
+          return (h * 60 + m) < docMEndMins ? 'morning' : 'evening'
         }
         const sessionTokens = apptSnap.docs
           .filter(d => d.data().status !== 'cancelled')
@@ -816,18 +835,32 @@ export default function BookAppointment() {
             <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
               {(() => {
                 const isToday = selDate && selDate.toDateString() === new Date().toDateString()
-                const nowH = new Date().getHours()
-                const morningEndH = parseInt((centre?.morningEnd || '13:00').split(':')[0])
-                const eveningEndH = parseInt((centre?.eveningEnd || '20:00').split(':')[0])
-                const morningPast = isToday && nowH >= morningEndH
-                const eveningPast = isToday && nowH >= eveningEndH
+                const now = new Date(); const nowMins = now.getHours() * 60 + now.getMinutes()
+                const morningEndMins = timeToMinutes(selDocObj?.morningEnd || centre?.morningEnd || '13:00')
+                const eveningEndMins = timeToMinutes(selDocObj?.eveningEnd || centre?.eveningEnd || '20:00')
+                const morningPast = isToday && nowMins >= morningEndMins
+                const eveningPast = isToday && nowMins >= eveningEndMins
                 const ds2 = selDate ? selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0') : null
                 const bc = ds2 ? (dateBookedCounts[ds2] || { morning: 0, evening: 0 }) : { morning: 0, evening: 0 }
                 const mAvail = morningOverride === 'off' ? 0 : Math.max(0, applyOverride(morningSlots, morningOverride, 'morning').length - bc.morning)
                 const eAvail = eveningOverride === 'off' ? 0 : Math.max(0, applyOverride(eveningSlots, eveningOverride, 'evening').length - bc.evening)
                 const sessions = [
-                  { key: 'morning', icon: '🌅', label: 'Morning', time: (() => { const s = getSessionStartOverride('morning'); const def = `${minutesToTime(timeToMinutes(centre?.morningStart||'09:00'))} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}`; return s && morningOverride !== 'off' ? `${s} – ${minutesToTime(timeToMinutes(centre?.morningEnd||'13:00'))}` : def })(), avail: mAvail, total: applyOverride(morningSlots, morningOverride, 'morning').length, off: morningOverride === 'off', past: morningPast },
-                  { key: 'evening', icon: '🌆', label: 'Evening', time: (() => { const s = getSessionStartOverride('evening'); const def = `${minutesToTime(timeToMinutes(centre?.eveningStart||'16:00'))} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}`; return s && eveningOverride !== 'off' ? `${s} – ${minutesToTime(timeToMinutes(centre?.eveningEnd||'20:00'))}` : def })(), avail: eAvail, total: applyOverride(eveningSlots, eveningOverride, 'evening').length, off: eveningOverride === 'off', past: eveningPast },
+                  { key: 'morning', icon: '🌅', label: 'Morning', time: (() => {
+                    const customStart = getSessionStartOverride('morning')
+                    const start = customStart || docMorningStart
+                    const effectiveSlots = applyOverride(morningSlots, morningOverride, 'morning')
+                    if (effectiveSlots.length === 0) return `${minutesToTime(timeToMinutes(start))} – ${minutesToTime(timeToMinutes(docMorningEnd))}`
+                    const lastSlotMins = timeToMinutes(effectiveSlots[effectiveSlots.length - 1]) + duration
+                    return `${minutesToTime(timeToMinutes(start))} – ${minutesToTime(lastSlotMins)}`
+                  })(), avail: mAvail, total: applyOverride(morningSlots, morningOverride, 'morning').length, off: morningOverride === 'off', past: morningPast },
+                  { key: 'evening', icon: '🌆', label: 'Evening', time: (() => {
+                    const customStart = getSessionStartOverride('evening')
+                    const start = customStart || docEveningStart
+                    const effectiveSlots = applyOverride(eveningSlots, eveningOverride, 'evening')
+                    if (effectiveSlots.length === 0) return `${minutesToTime(timeToMinutes(start))} – ${minutesToTime(timeToMinutes(docEveningEnd))}`
+                    const lastSlotMins = timeToMinutes(effectiveSlots[effectiveSlots.length - 1]) + duration
+                    return `${minutesToTime(timeToMinutes(start))} – ${minutesToTime(lastSlotMins)}`
+                  })(), avail: eAvail, total: applyOverride(eveningSlots, eveningOverride, 'evening').length, off: eveningOverride === 'off', past: eveningPast },
                 ]
                 return sessions.map(sess => (
                   <div key={sess.key}
