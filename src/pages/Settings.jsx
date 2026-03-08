@@ -730,7 +730,7 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSa
 
 const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
 
-function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
+function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor }) {
   const [adding, setAdding]   = useState(false)
   const [draft, setDraft]     = useState(EMPTY_DOCTOR)
   const [err, setErr]         = useState('')
@@ -755,7 +755,10 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
   }
 
   function handleRemove(i) {
+    const doctor = doctors[i]
+    if (!window.confirm(`Remove Dr. ${doctor.name}?\n\nThis will delete all their settings including availability and slot overrides. This cannot be undone.`)) return
     onChange(doctors.filter((_, j) => j !== i))
+    if (onRemoveDoctor) onRemoveDoctor(doctor.name)
   }
 
   function feeLabel(d) {
@@ -1559,6 +1562,11 @@ export default function Settings() {
                 doctors={form.doctors || []}
                 onChange={updated => setForm(f => ({ ...f, doctors: updated }))}
                 onSaveDoctors={(latestDoctors) => saveFields({ doctors: latestDoctors ?? form.doctors })}
+                onRemoveDoctor={(name) => {
+                  const updated = (form.doctors || []).filter(d => d.name !== name)
+                  saveFields({ doctors: updated })
+                  logActivity(user.uid, { action: 'doctor_removed', label: 'Doctor Removed', detail: name, by: user?.email || '' })
+                }}
               />
             </Section>
           </div>

@@ -36,24 +36,24 @@ export default function Appointments() {
   const [sendingReport, setSendingReport] = useState(false)
   const [reportSent, setReportSent]     = useState({ morning: false, evening: false })
   const today = format(new Date(), 'yyyy-MM-dd')
+  const [viewDate, setViewDate]         = useState(today)
+  const isToday = viewDate === today
 
   const unsubRef = useRef(null)
 
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    // Unsubscribe previous listener
     if (unsubRef.current) unsubRef.current()
-    unsubRef.current = subscribeToAppointments(user.uid, today, data => {
+    unsubRef.current = subscribeToAppointments(user.uid, viewDate, data => {
       setAppointments(data)
       setLoading(false)
     })
     return () => { if (unsubRef.current) unsubRef.current() }
-  }, [user])
+  }, [user, viewDate])
 
-  // Keep load() for session report re-fetch compatibility
   async function load() {
-    const data = await getAppointments(user.uid, today)
+    const data = await getAppointments(user.uid, viewDate)
     setAppointments(data)
   }
 
@@ -251,18 +251,27 @@ export default function Appointments() {
     >
       <Card>
         <CardHeader
-          title={`${appointments.length} appointments today`}
-          sub={format(new Date(), 'EEEE, dd MMMM yyyy')}
+          title={`${appointments.length} appointment${appointments.length !== 1 ? 's' : ''} · ${isToday ? 'Today' : format(new Date(viewDate + 'T00:00:00'), 'dd MMM yyyy')}`}
+          sub={isToday ? format(new Date(), 'EEEE, dd MMMM yyyy') : format(new Date(viewDate + 'T00:00:00'), 'EEEE, dd MMMM yyyy')}
           action={
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={() => { const d = new Date(viewDate + 'T00:00:00'); d.setDate(d.getDate()-1); setViewDate(format(d,'yyyy-MM-dd')) }}
+                  style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)' }}>‹</button>
+                <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)}
+                  style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', cursor: 'pointer' }} />
+                <button onClick={() => { const d = new Date(viewDate + 'T00:00:00'); d.setDate(d.getDate()+1); setViewDate(format(d,'yyyy-MM-dd')) }}
+                  style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)' }}>›</button>
+                {!isToday && <button onClick={() => setViewDate(today)}
+                  style={{ padding: '6px 12px', borderRadius: 7, border: '1.5px solid var(--teal)', background: 'var(--teal-light)', color: 'var(--teal)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif' }}>Today</button>}
+              </div>
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="🔍 Search name or phone…"
-                style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 14px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', width: 220 }} />
+                style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 14px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', width: 200 }} />
               <Btn variant="ghost" small onClick={load}>🔄</Btn>
             </div>
           }
         />
-
         {/* Filter tabs */}
         <div style={{ display: 'flex', gap: 4, padding: '10px 22px', borderBottom: '1px solid var(--border)' }}>
           {['all', 'scheduled', 'waiting', 'in-consultation', 'done', 'cancelled'].map(s => (

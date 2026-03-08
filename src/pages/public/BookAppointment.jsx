@@ -375,8 +375,25 @@ export default function BookAppointment() {
       // Slot availability for this date
       const overrideCfg = selDocObj?.slotOverrides?.[ds]
       const mOverride = overrideCfg?.morning; const eOverride = overrideCfg?.evening
-      const mTotal = mOverride === 'off' ? 0 : (mOverride && mOverride !== 'all' ? Math.min(parseInt(mOverride)||morningSlots.length, morningSlots.length) : morningSlots.length)
-      const eTotal = eOverride === 'off' ? 0 : (eOverride && eOverride !== 'all' ? Math.min(parseInt(eOverride)||eveningSlots.length, eveningSlots.length) : eveningSlots.length)
+      // For date chip counts, apply full override including custom start time
+      const mSlotsForDate = (() => {
+        if (mOverride === 'off') return []
+        const mStartOverride = overrideCfg?.morningStart
+        let slots = [...morningSlots]
+        if (mStartOverride) { const sm = timeToMinutes(mStartOverride); const idx = slots.findIndex(s => timeToMinutes(s) >= sm); slots = idx >= 0 ? slots.slice(idx) : [] }
+        if (mOverride && mOverride !== 'all') slots = slots.slice(0, parseInt(mOverride) || slots.length)
+        return slots
+      })()
+      const eSlotsForDate = (() => {
+        if (eOverride === 'off') return []
+        const eStartOverride = overrideCfg?.eveningStart
+        let slots = [...eveningSlots]
+        if (eStartOverride) { const sm = timeToMinutes(eStartOverride); const idx = slots.findIndex(s => timeToMinutes(s) >= sm); slots = idx >= 0 ? slots.slice(idx) : [] }
+        if (eOverride && eOverride !== 'all') slots = slots.slice(0, parseInt(eOverride) || slots.length)
+        return slots
+      })()
+      const mTotal = mSlotsForDate.length
+      const eTotal = eSlotsForDate.length
       const totalSlots = mTotal + eTotal
       const booked = dateBookedCounts[ds] ? (dateBookedCounts[ds].morning + dateBookedCounts[ds].evening) : 0
       const available = Math.max(0, totalSlots - booked)
@@ -389,7 +406,15 @@ export default function BookAppointment() {
   function canProceed() {
     if (step === 1) return name.trim().length > 0 && phone.trim().length === 10
     if (step === 2) return doctors.length === 0 || selDoc !== null
-    if (step === 3) return selDate !== null
+    if (step === 3) {
+      if (!selDate) return false
+      const weeklyOff = centre?.weeklyOff || []
+      if (weeklyOff.includes(selDate.getDay())) return false
+      const selDocObj2 = doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc))
+      const dateStr2 = selDate.getFullYear() + '-' + String(selDate.getMonth()+1).padStart(2,'0') + '-' + String(selDate.getDate()).padStart(2,'0')
+      if (selDocObj2?.unavailableDates?.includes(dateStr2)) return false
+      return true
+    }
     if (step === 4) return selSlot !== null
     return true
   }
@@ -818,7 +843,7 @@ export default function BookAppointment() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2.5fr', gap: 10 }}>
               <button style={S.btnGhost} onClick={goBack}>← Back</button>
-              <button style={S.btnPrimary} onClick={goNext}>Next: Pick Slot →</button>
+              <button style={{ ...S.btnPrimary, opacity: canProceed() ? 1 : 0.5 }} onClick={goNext} disabled={!canProceed()}>Next: Pick Slot →</button>
             </div>
           </div>
         )}
