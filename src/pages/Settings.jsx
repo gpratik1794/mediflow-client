@@ -1209,51 +1209,70 @@ export default function Settings() {
   const isDiag   = centreType === 'diagnostic' || centreType === 'both'
 
   // ── Tabs with drag-to-reorder, persisted per user ──
-  const ALL_TABS = [
+  // Store ALL keys always — visibility applied at render time, never at storage time
+  const ALL_TAB_DEFS = [
     { key: 'general',  label: '🏥 General' },
-    { key: 'clinic',   label: '🗓️ Clinic',     show: isClinic },
+    { key: 'clinic',   label: '🗓️ Clinic' },
     { key: 'whatsapp', label: '💬 WhatsApp' },
-    { key: 'doctors',  label: '👨‍⚕️ Doctors',    show: isClinic },
+    { key: 'doctors',  label: '👨‍⚕️ Doctors' },
     { key: 'data',     label: '📋 Data & Logs' },
   ]
-  const visibleTabKeys = ALL_TABS.filter(t => t.show !== false).map(t => t.key)
+  const ALL_TAB_KEYS = ALL_TAB_DEFS.map(t => t.key)
 
   const STORAGE_KEY = user?.uid ? `mf_tab_order_${user.uid}` : null
 
-  const getInitialOrder = () => {
+  const getStoredOrder = (uid) => {
     try {
-      if (STORAGE_KEY) {
-        const saved = localStorage.getItem(STORAGE_KEY)
+      const key = uid ? `mf_tab_order_${uid}` : null
+      if (key) {
+        const saved = localStorage.getItem(key)
         if (saved) {
           const parsed = JSON.parse(saved)
-          // Merge: keep saved order, add any new tabs at end, drop removed ones
-          const valid = parsed.filter(k => visibleTabKeys.includes(k))
-          const added = visibleTabKeys.filter(k => !valid.includes(k))
+          const valid = parsed.filter(k => ALL_TAB_KEYS.includes(k))
+          const added = ALL_TAB_KEYS.filter(k => !valid.includes(k))
           return [...valid, ...added]
         }
       }
     } catch(e) {}
-    return visibleTabKeys
+    return [...ALL_TAB_KEYS]
   }
 
-  const [tabOrder, setTabOrder] = useState(getInitialOrder)
+  const [tabOrder, setTabOrder] = useState(() => getStoredOrder(null))
   const [activeTab, setActiveTab] = useState('general')
   const [dragIdx, setDragIdx]   = useState(null)
   const [dragOver, setDragOver] = useState(null)
 
-  // Persist whenever order changes
+  // Re-sync when uid becomes available (null on first render)
+  // Also clears stale stored orders that are missing keys (e.g. saved before clinic tabs existed)
+  useEffect(() => {
+    if (user?.uid) {
+      const order = getStoredOrder(user.uid)
+      // If stored order is missing any all-tab keys, it's stale — reset it
+      const hasAll = ALL_TAB_KEYS.every(k => order.includes(k))
+      if (!hasAll) {
+        try { localStorage.removeItem(`mf_tab_order_${user.uid}`) } catch(e) {}
+        setTabOrder([...ALL_TAB_KEYS])
+      } else {
+        setTabOrder(order)
+      }
+    }
+  }, [user?.uid])
+
+  // Persist whenever order changes (only after uid is known)
   useEffect(() => {
     if (STORAGE_KEY) {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tabOrder)) } catch(e) {}
     }
   }, [tabOrder, STORAGE_KEY])
 
-  // Re-sync when user loads (uid might be null initially)
-  useEffect(() => {
-    if (user?.uid) setTabOrder(getInitialOrder())
-  }, [user?.uid])
-
-  const tabs = tabOrder.map(k => ALL_TABS.find(t => t.key === k)).filter(Boolean)
+  // Visibility filter applied here — clinic/doctors only shown for clinic type
+  const tabs = tabOrder
+    .map(k => ALL_TAB_DEFS.find(t => t.key === k))
+    .filter(t => {
+      if (!t) return false
+      if (t.key === 'clinic' || t.key === 'doctors') return isClinic
+      return true
+    })
 
   function handleDragStart(e, idx) {
     setDragIdx(idx)
