@@ -418,42 +418,111 @@ const SCHEDULE_TIME_OPTIONS = [
 // ── Doctor Availability Component ────────────────────────────────────────────
 // Manages vacation dates and per-date slot count overrides
 // Shows a mini calendar — today onwards, vacation dates greyed, easy toggle
+function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onClose }) {
+  const FMTS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const [sy, sm, sd] = ds.split('-').map(Number)
+  const dateLabel = `${sd} ${FMTS[sm-1]} ${sy}`
+  const isOff   = unavail.includes(ds)
+  const cfg     = overrides[ds] || {}
+  const mVal    = cfg.morning || 'all'
+  const eVal    = cfg.evening || 'all'
+  const hasOver = cfg.morning !== undefined || cfg.evening !== undefined
+  const mLabel  = mVal === 'off' ? 'Closed' : mVal === 'all' ? 'All slots' : `${mVal} slots`
+  const eLabel  = eVal === 'off' ? 'Closed' : eVal === 'all' ? 'All slots' : `${eVal} slots`
+  const sStyle  = { width: '100%', padding: '8px 10px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>📅 {dateLabel}</div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)', lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Status */}
+        <div style={{ fontSize: 12, borderRadius: 8, padding: '8px 12px', marginBottom: 16,
+          background: isOff ? '#FEF2F2' : hasOver ? '#FFFBEB' : 'var(--teal-light)',
+          color: isOff ? '#DC2626' : hasOver ? '#D97706' : 'var(--teal)', fontWeight: 600 }}>
+          {isOff ? '🔴 Marked as leave — no bookings allowed'
+           : hasOver ? `🟡 Override active — 🌅 ${mLabel} · 🌆 ${eLabel}`
+           : '🟢 Normal working day — all slots available'}
+        </div>
+
+        {/* Leave toggle */}
+        {isOff ? (
+          <button type="button" onClick={() => { onToggleLeave(ds); onClose() }}
+            style={{ width: '100%', padding: '10px', borderRadius: 9, border: '1.5px solid var(--green)', background: 'var(--green-bg)', color: 'var(--green)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', marginBottom: 12 }}>
+            ✓ Remove leave — mark as working day
+          </button>
+        ) : (
+          <button type="button" onClick={() => {
+            if (hasOver && !window.confirm(`${dateLabel} has a slot override. Marking as leave will remove overrides too. Proceed?`)) return
+            onToggleLeave(ds); onClose()
+          }} style={{ width: '100%', padding: '10px', borderRadius: 9, border: '1.5px solid #DC2626', background: '#FEF2F2', color: '#DC2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', marginBottom: 16 }}>
+            🔴 Mark as full day leave
+          </button>
+        )}
+
+        {/* Slot overrides — only if not on leave */}
+        {!isOff && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 10 }}>🎯 Slot count for this date</div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              {['morning', 'evening'].map(sess => {
+                const cur = sess === 'morning' ? mVal : eVal
+                return (
+                  <div key={sess} style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      {sess === 'morning' ? '🌅 Morning' : '🌆 Evening'}
+                    </div>
+                    <select value={cur} onChange={e => onSlotOverride(ds, sess, e.target.value)} style={sStyle}>
+                      <option value="all">All (default)</option>
+                      <option value="off">Off (closed)</option>
+                      {[1,2,3,4,5,6,8,10,12,15,20,25,30].map(n => <option key={n} value={n}>{n} slots</option>)}
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
+            {hasOver && (
+              <button type="button" onClick={() => { onSlotOverride(ds, '_reset', null); onClose() }}
+                style={{ width: '100%', padding: '8px', borderRadius: 9, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--slate)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                Reset to default slots
+              </button>
+            )}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 12, lineHeight: 1.6 }}>
+          Changes apply immediately for new bookings. Existing appointments are not affected.
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
-  const today = new Date()
-  today.setHours(0,0,0,0)
+  const today = new Date(); today.setHours(0,0,0,0)
   const todayStr = today.toISOString().split('T')[0]
-
-  // Local style (sStyle not available here — defined in parent scope)
-  const sStyle = { width: '100%', padding: '8px 10px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }
-
-  // Calendar state — which month are we viewing
   const [calYear,  setCalYear]  = useState(today.getFullYear())
-  const [calMonth, setCalMonth] = useState(today.getMonth()) // 0-based
-  const [slotInput, setSlotInput] = useState({}) // { 'YYYY-MM-DD': '10' }
-  // Slot override add form
-  const [oDate,   setODate]   = useState('')
-  const [oSlots,  setOSlots]  = useState('all')
-  const [oSlotsE, setOSlotsE] = useState('all')
-  // Selected day panel
-  const [selectedDay, setSelectedDay] = useState(null) // ds string
+  const [calMonth, setCalMonth] = useState(today.getMonth())
+  const [modalDay, setModalDay] = useState(null)
 
-  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa']
-
-  const unavail   = d.unavailableDates  || []
-  const overrides = d.slotOverrides     || {} // { 'YYYY-MM-DD': 8 }
+  const unavail   = d.unavailableDates || []
+  const overrides = d.slotOverrides    || {}
 
   function toStr(y, m, day) {
     return `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
   }
 
-  function toggleDate(ds) {
+  function toggleLeave(ds) {
     const updated = [...doctors]
     const isOff = unavail.includes(ds)
     if (isOff) {
-      // Remove from unavailable, also remove any slot override for this date
-      const newOverrides = { ...overrides }
-      delete newOverrides[ds]
+      const newOverrides = { ...overrides }; delete newOverrides[ds]
       updated[i] = { ...d, unavailableDates: unavail.filter(x => x !== ds), slotOverrides: newOverrides }
     } else {
       updated[i] = { ...d, unavailableDates: [...unavail, ds].sort() }
@@ -464,57 +533,48 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
   function saveSlotOverride(ds, session, val) {
     const updated = [...doctors]
     const newOverrides = { ...overrides }
-    const existing = newOverrides[ds] || {}
-    if (val === 'all') {
-      // remove the key if both sessions are 'all' (default)
-      const other = session === 'morning' ? existing.evening : existing.morning
-      if (!other || other === 'all') { delete newOverrides[ds] }
-      else { newOverrides[ds] = { ...existing, [session]: 'all' } }
+    if (session === '_reset') {
+      delete newOverrides[ds]
     } else {
-      newOverrides[ds] = { ...existing, [session]: val === 'off' ? 'off' : parseInt(val) || 'all' }
+      const existing = newOverrides[ds] || {}
+      if (val === 'all') {
+        const other = session === 'morning' ? existing.evening : existing.morning
+        if (!other || other === 'all') { delete newOverrides[ds] }
+        else { newOverrides[ds] = { ...existing, [session]: 'all' } }
+      } else {
+        newOverrides[ds] = { ...existing, [session]: val === 'off' ? 'off' : parseInt(val) || 'all' }
+      }
     }
     updated[i] = { ...d, slotOverrides: newOverrides }
     onChange(updated)
   }
 
-  // Build calendar days for current month
+  const canGoPrev = calYear > today.getFullYear() || (calYear === today.getFullYear() && calMonth > today.getMonth())
   const firstDay = new Date(calYear, calMonth, 1).getDay()
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
   const cells = []
   for (let p = 0; p < firstDay; p++) cells.push(null)
   for (let day = 1; day <= daysInMonth; day++) cells.push(day)
 
-  const canGoPrev = calYear > today.getFullYear() || (calYear === today.getFullYear() && calMonth > today.getMonth())
-
   return (
     <div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>🏖️ Availability & Slot Overrides</div>
-      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.6 }}>
-        Click a date to mark as leave (red). Set slot override to limit bookings on a specific date.
-      </div>
-
-      {/* Month navigator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <button type="button" onClick={() => {
-          if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1) }
-          else setCalMonth(m => m-1)
-        }} disabled={!canGoPrev} style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--border)', background: 'none', cursor: canGoPrev ? 'pointer' : 'not-allowed', color: canGoPrev ? 'var(--navy)' : 'var(--border)', fontSize: 13 }}>‹</button>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--navy)', flex: 1, textAlign: 'center' }}>{MONTHS[calMonth]} {calYear}</div>
-        <button type="button" onClick={() => {
-          if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1) }
-          else setCalMonth(m => m+1)
-        }} style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--navy)', fontSize: 13 }}>›</button>
+      {/* Compact month navigator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <button type="button" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1) } else setCalMonth(m => m-1) }}
+          disabled={!canGoPrev}
+          style={{ padding: '3px 8px', borderRadius: 6, border: '1.5px solid var(--border)', background: 'none', cursor: canGoPrev ? 'pointer' : 'not-allowed', color: canGoPrev ? 'var(--navy)' : 'var(--border)', fontSize: 12 }}>‹</button>
+        <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--navy)', flex: 1, textAlign: 'center' }}>{MONTHS[calMonth].slice(0,3)} {calYear}</div>
+        <button type="button" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1) } else setCalMonth(m => m+1) }}
+          style={{ padding: '3px 8px', borderRadius: 6, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', color: 'var(--navy)', fontSize: 12 }}>›</button>
       </div>
 
       {/* Day headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
-        {DAYS.map(day => (
-          <div key={day} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, color: 'var(--muted)', padding: '2px 0' }}>{day}</div>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 2 }}>
+        {DAYS.map(day => <div key={day} style={{ textAlign: 'center', fontSize: 9, fontWeight: 600, color: 'var(--muted)' }}>{day}</div>)}
       </div>
 
-      {/* Calendar cells */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 14 }}>
+      {/* Calendar grid — compact */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 10 }}>
         {cells.map((day, idx) => {
           if (!day) return <div key={idx} />
           const ds      = toStr(calYear, calMonth, day)
@@ -524,172 +584,73 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
           const isToday = ds === todayStr
           return (
             <button key={ds} type="button"
-              onClick={() => { if (!isPast) setSelectedDay(ds === selectedDay ? null : ds) }}
+              onClick={() => { if (!isPast) setModalDay(ds) }}
               disabled={isPast}
+              title={isOff ? 'Leave' : hasOver ? 'Override set' : isToday ? 'Today' : 'Click to configure'}
               style={{
-                aspectRatio: '1', borderRadius: 8, border: ds === selectedDay ? '2px solid var(--teal)' : isToday ? '2px solid var(--teal)' : '1.5px solid transparent',
-                background: isPast ? 'var(--bg)' : isOff ? '#FEE2E2' : hasOver ? '#FEF3C7' : ds === selectedDay ? 'var(--teal-light)' : 'var(--surface)',
+                padding: '4px 0', borderRadius: 5,
+                border: isToday ? '1.5px solid var(--teal)' : '1.5px solid transparent',
+                background: isPast ? 'transparent' : isOff ? '#FEE2E2' : hasOver ? '#FEF3C7' : 'var(--surface)',
                 color: isPast ? 'var(--border)' : isOff ? '#DC2626' : 'var(--navy)',
-                cursor: isPast ? 'not-allowed' : 'pointer',
-                fontSize: 12, fontWeight: isToday ? 700 : 400,
+                cursor: isPast ? 'default' : 'pointer',
+                fontSize: 11, fontWeight: isToday ? 700 : 400,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexDirection: 'column', gap: 1, padding: '3px 0', lineHeight: 1,
-                boxShadow: isOff ? 'inset 0 0 0 1px #FECACA' : hasOver ? 'inset 0 0 0 1px #FCD34D' : 'none'
-              }}
-              title={isOff ? 'Leave — click to remove' : isPast ? 'Past date' : hasOver ? `Slot override: ${hasOver}` : 'Click to mark leave'}
-            >
+                flexDirection: 'column', gap: 0, lineHeight: 1.2
+              }}>
               {day}
-              {hasOver && !isOff && <span style={{ fontSize: 8, color: '#D97706', fontWeight: 700 }}>~</span>}
-              {isOff && <span style={{ fontSize: 8, color: '#DC2626' }}>off</span>}
+              {isOff && <span style={{ fontSize: 7, color: '#DC2626', fontWeight: 700 }}>off</span>}
+              {hasOver && !isOff && <span style={{ fontSize: 7, color: '#D97706', fontWeight: 700 }}>~</span>}
             </button>
           )
         })}
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        {[['#FEE2E2','#DC2626','Leave / Off'], ['#FEF3C7','#D97706','Slot override'], ['var(--teal-light)','var(--teal)','Today / Selected']].map(([bg, col, label]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: bg, border: `1px solid ${col}` }} />
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</span>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        {[['#FEE2E2','#DC2626','Leave'], ['#FEF3C7','#D97706','Override'], ['var(--teal-light)','var(--teal)','Today']].map(([bg, col, label]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 3, background: bg, border: `1px solid ${col}` }} />
+            <span style={{ fontSize: 10, color: 'var(--muted)' }}>{label}</span>
           </div>
         ))}
       </div>
 
-      {/* Date action panel — shows when a date is clicked */}
-      {selectedDay && (() => {
-        const isOff   = unavail.includes(selectedDay)
-        const cfg     = overrides[selectedDay] || {}
-        const mVal    = cfg.morning || 'all'
-        const eVal    = cfg.evening || 'all'
-        const hasOver = cfg.morning !== undefined || cfg.evening !== undefined
-        const mLabel  = mVal === 'off' ? 'Closed' : mVal === 'all' ? 'All slots' : `${mVal} slots`
-        const eLabel  = eVal === 'off' ? 'Closed' : eVal === 'all' ? 'All slots' : `${eVal} slots`
-        const FMTS    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-        const [sy, sm, sd] = selectedDay.split('-').map(Number)
-        const dateLabel = `${sd} ${FMTS[sm-1]} ${sy}`
-
-        return (
-          <div style={{ border: '1.5px solid var(--teal)', borderRadius: 12, padding: 14, background: 'var(--teal-light)', marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--teal)' }}>📅 {dateLabel}</div>
-              <button type="button" onClick={() => setSelectedDay(null)}
-                style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: 'var(--muted)', lineHeight: 1 }}>✕</button>
+      {/* Active overrides summary */}
+      {(unavail.filter(dt => dt >= todayStr).length > 0 || Object.keys(overrides).length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
+          {unavail.filter(dt => dt >= todayStr).sort().map(dt => (
+            <div key={dt} onClick={() => setModalDay(dt)}
+              style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 20, padding: '2px 8px', cursor: 'pointer' }}>
+              <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 600 }}>{dt}</span>
+              <span style={{ fontSize: 10, color: '#DC2626' }}>leave</span>
             </div>
-
-            {/* Current status summary */}
-            <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 12, lineHeight: 1.7 }}>
-              {isOff
-                ? <span style={{ color: '#DC2626', fontWeight: 600 }}>🔴 Marked as leave — no bookings allowed on this day.</span>
-                : hasOver
-                  ? <span style={{ color: '#D97706', fontWeight: 600 }}>🟡 Slot override active — 🌅 Morning: {mLabel} · 🌆 Evening: {eLabel}</span>
-                  : <span style={{ color: 'var(--slate)' }}>🟢 Normal working day — all slots available.</span>
-              }
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-
-              {/* Mark / Unmark leave */}
-              {isOff ? (
-                <button type="button"
-                  onClick={() => { toggleDate(selectedDay); setSelectedDay(null) }}
-                  style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid var(--green)', background: 'var(--green-bg)', color: 'var(--green)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
-                  ✓ Remove leave — mark as working day
-                </button>
-              ) : (
-                <button type="button"
-                  onClick={() => {
-                    if (hasOver) {
-                      if (!window.confirm(`${dateLabel} has a slot override (🌅 ${mLabel} · 🌆 ${eLabel}). Marking as leave will remove all overrides too. Proceed?`)) return
-                    }
-                    toggleDate(selectedDay)
-                    setSelectedDay(null)
-                  }}
-                  style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #DC2626', background: '#FEF2F2', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
-                  🔴 Mark as leave (full day off)
-                </button>
-              )}
-
-              {/* Slot overrides per session — only if not on leave */}
-              {!isOff && (
-                <div style={{ width: '100%', marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>
-                    🎯 Adjust slot count for this date
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    {['morning','evening'].map(sess => {
-                      const curVal = (sess === 'morning' ? mVal : eVal)
-                      return (
-                        <div key={sess}>
-                          <span style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                            {sess === 'morning' ? '🌅 Morning' : '🌆 Evening'}
-                          </span>
-                          <select value={curVal}
-                            onChange={e => saveSlotOverride(selectedDay, sess, e.target.value)}
-                            style={{ ...sStyle, width: 120 }}>
-                            <option value="all">All (default)</option>
-                            <option value="off">Off (closed)</option>
-                            {[1,2,3,4,5,6,8,10,12,15,20,25,30].map(n => <option key={n} value={n}>{n} slots</option>)}
-                          </select>
-                        </div>
-                      )
-                    })}
-                    {hasOver && (
-                      <button type="button"
-                        onClick={() => {
-                          const updated = [...doctors]
-                          const newOverrides = { ...overrides }
-                          delete newOverrides[selectedDay]
-                          updated[i] = { ...d, slotOverrides: newOverrides }
-                          onChange(updated)
-                        }}
-                        style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--slate)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', marginBottom: 1 }}>
-                        Reset to default
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-                    Changes take effect immediately for new bookings. Existing appointments are not affected.
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* Active overrides summary — click chip or calendar date to edit */}
-      {(Object.keys(overrides).length > 0 || unavail.filter(dt => dt >= todayStr).length > 0) && (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📋 Active Overrides</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {unavail.filter(dt => dt >= todayStr).sort().map(dt => (
-              <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}
-                onClick={() => setSelectedDay(prev => prev === dt ? null : dt)}>
-                <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 600 }}>{dt}</span>
-                <span style={{ fontSize: 11, color: '#DC2626' }}>leave</span>
+          ))}
+          {Object.entries(overrides).sort().map(([dt, cfg]) => {
+            const mL = cfg.morning === 'off' ? 'Off' : cfg.morning === 'all' || !cfg.morning ? '—' : `${cfg.morning}`
+            const eL = cfg.evening === 'off' ? 'Off' : cfg.evening === 'all' || !cfg.evening ? '—' : `${cfg.evening}`
+            return (
+              <div key={dt} onClick={() => setModalDay(dt)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 20, padding: '2px 8px', cursor: 'pointer' }}>
+                <span style={{ fontSize: 11, color: '#92400E', fontWeight: 600 }}>{dt}</span>
+                <span style={{ fontSize: 10, color: '#D97706' }}>🌅{mL} 🌆{eL}</span>
               </div>
-            ))}
-            {Object.entries(overrides).sort().map(([dt, cfg]) => {
-              const mLabel = cfg.morning === 'off' ? 'Off' : cfg.morning === 'all' || !cfg.morning ? 'All' : `${cfg.morning}`
-              const eLabel = cfg.evening === 'off' ? 'Off' : cfg.evening === 'all' || !cfg.evening ? 'All' : `${cfg.evening}`
-              return (
-                <div key={dt} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}
-                  onClick={() => setSelectedDay(prev => prev === dt ? null : dt)}>
-                  <span style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>{dt}</span>
-                  <span style={{ fontSize: 11, color: '#D97706' }}>🌅{mLabel} 🌆{eLabel}</span>
-                </div>
-              )
-            })}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Click any chip or a calendar date to view or edit</div>
+            )
+          })}
         </div>
-      )}    </div>
+      )}
+      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>Click any date to mark leave or adjust slots</div>
+
+      {/* Date modal */}
+      {modalDay && (
+        <DateModal ds={modalDay} unavail={unavail} overrides={overrides}
+          onToggleLeave={toggleLeave}
+          onSlotOverride={saveSlotOverride}
+          onClose={() => setModalDay(null)} />
+      )}
+    </div>
   )
 }
 
-const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
 
 function DoctorsManager({ doctors, onChange }) {
   const [adding, setAdding]   = useState(false)
@@ -1166,334 +1127,298 @@ export default function Settings() {
   ]
 
   const centreType = form.centreType || 'diagnostic'
+  const isClinic = centreType === 'clinic' || centreType === 'both'
+  const isDiag   = centreType === 'diagnostic' || centreType === 'both'
+
+  // ── Tabs ──
+  const ALL_TABS = [
+    { key: 'general',   label: '🏥 General' },
+    { key: 'clinic',    label: '🗓️ Clinic',    show: isClinic },
+    { key: 'whatsapp',  label: '💬 WhatsApp' },
+    { key: 'doctors',   label: '👨‍⚕️ Doctors',   show: isClinic },
+    { key: 'data',      label: '📋 Data & Logs' },
+  ]
+  const tabs = ALL_TABS.filter(t => t.show !== false)
+  const [activeTab, setActiveTab] = useState('general')
+
+  const tabStyle = (key) => ({
+    padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+    fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 600,
+    background: activeTab === key ? 'var(--teal)' : 'transparent',
+    color: activeTab === key ? '#fff' : 'var(--slate)',
+    transition: 'all 0.15s', whiteSpace: 'nowrap',
+  })
 
   return (
     <Layout title="Settings">
-      <div style={{ maxWidth: 680 }}>
+      <div style={{ maxWidth: 700 }}>
 
-        <Section title="Centre Information">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500 }}>Centre Type</label>
-            <div style={{
-              padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)',
-              background: 'var(--bg)', fontSize: 13, color: 'var(--muted)',
-              display: 'flex', alignItems: 'center', gap: 8
-            }}>
-              {TYPE_LABELS[centreType] || 'Diagnostic Centre'}
-              <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 4 }}>(set by admin)</span>
-            </div>
-          </div>
-          <Input label="Centre / Clinic Name" value={form.centreName} onChange={setF('centreName')} placeholder="e.g. Sunrise Diagnostics" required />
-          <Input label="Owner / Admin Name"   value={form.ownerName}  onChange={setF('ownerName')}  placeholder="Full name" required />
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Input label="Phone" type="tel" value={form.phone} onChange={setF('phone')} placeholder="+91 XXXXXXXXXX" />
-            <Input label="City"             value={form.city}  onChange={setF('city')}  placeholder="City" />
-          </div>
-          <Input label="Full Address" value={form.address} onChange={setF('address')} placeholder="Street, Area, City, PIN" />
-          <Btn type="button" onClick={handleSaveCentreInfo} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-            {saving ? 'Saving…' : '💾 Save Centre Info'}
-          </Btn>
-        </Section>
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', padding: '2px 0 16px', WebkitOverflowScrolling: 'touch',
+          borderBottom: '2px solid var(--border)', marginBottom: 24 }}>
+          {tabs.map(t => (
+            <button key={t.key} type="button" style={tabStyle(t.key)} onClick={() => setActiveTab(t.key)}>{t.label}</button>
+          ))}
+        </div>
 
-        {(centreType === 'clinic' || centreType === 'both') && (
-          <Section title="Clinic Settings">
-            <Select label="Appointment Slot Duration" value={form.slotDuration} onChange={setF('slotDuration')}
-              options={[
-                { value: '5',  label: '5 minutes (12 slots/hour)' },
-                { value: '10', label: '10 minutes (6 slots/hour)' },
-                { value: '15', label: '15 minutes (4 slots/hour)' },
-                { value: '20', label: '20 minutes (3 slots/hour)' },
-                { value: '30', label: '30 minutes (2 slots/hour)' },
-                { value: '60', label: '60 minutes (1 slot/hour)' },
-              ]}
-            />
-            {/* Morning / Evening session split */}
-            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>🌅 Morning Session</div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <Input label="Morning Start" type="time" value={form.morningStart} onChange={setF('morningStart')} />
-                <Input label="Morning End"   type="time" value={form.morningEnd}   onChange={setF('morningEnd')} />
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginTop: 4 }}>🌆 Evening Session</div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <Input label="Evening Start" type="time" value={form.eveningStart} onChange={setF('eveningStart')} />
-                <Input label="Evening End"   type="time" value={form.eveningEnd}   onChange={setF('eveningEnd')} />
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.6 }}>
-                These timings are shown on the public appointment booking form. Slots between morning end and evening start will not be available for online booking.
-              </div>
-            </div>
-
-            <Select label="Late Check-in Queue Penalty"
-              value={form.lateCheckinPenalty}
-              onChange={setF('lateCheckinPenalty')}
-              options={[
-                { value: '0', label: 'No penalty — check in at any time, go next in line' },
-                { value: '1', label: 'Wait 1 patient before being called in' },
-                { value: '2', label: 'Wait 2 patients before being called in' },
-                { value: '3', label: 'Wait 3 patients before being called in' },
-                { value: '5', label: 'Wait 5 patients before being called in' },
-              ]}
-            />
-            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.8 }}>
-              If a patient misses their slot and checks in late, this controls how many patients must go before them.
-              For example, set to 3: if patient #4 was skipped and #5,#6,#7 have gone in, patient #4 checks in and goes after #10 (current+3).
-              Set to 0 to let late patients go next in line immediately.
-            </div>
-
-            {/* Weekly Off */}
-            <div>
-              <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                Weekly Off Days
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
-                  const isOff = (form.weeklyOff || []).includes(idx)
-                  return (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => {
-                        const current = form.weeklyOff || []
-                        const updated = isOff ? current.filter(d => d !== idx) : [...current, idx]
-                        setForm(f => ({ ...f, weeklyOff: updated }))
-                      }}
-                      style={{
-                        padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                        fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
-                        border: `1.5px solid ${isOff ? 'var(--red, #DC2626)' : 'var(--border)'}`,
-                        background: isOff ? '#FEF2F2' : 'var(--surface)',
-                        color: isOff ? '#DC2626' : 'var(--slate)',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      {day}
-                    </button>
-                  )
-                })}
-              </div>
-              {(form.weeklyOff || []).length > 0 ? (
-                <div style={{ marginTop: 8, fontSize: 12, color: '#DC2626', fontWeight: 500 }}>
-                  🚫 Closed on: {(form.weeklyOff || []).sort((a,b)=>a-b).map(d => ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d]).join(', ')} — no appointments can be booked on these days
+        {/* ── GENERAL TAB ── */}
+        {activeTab === 'general' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <Section title="Centre Information">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500 }}>Centre Type</label>
+                <div style={{ padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 13, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {TYPE_LABELS[centreType] || 'Diagnostic Centre'}
+                  <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 4 }}>(set by admin)</span>
                 </div>
-              ) : (
-                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-                  No weekly off set — clinic is open all 7 days
-                </div>
-              )}
-            </div>
-            {/* Fallback WhatsApp Number */}
-            <div>
-              <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                Fallback WhatsApp Notification Number
-              </label>
-              <input
-                value={form.fallbackNotifyNumber}
-                onChange={e => setForm(f => ({ ...f, fallbackNotifyNumber: e.target.value.replace(/\D/g,'').slice(0,12) }))}
-                placeholder="e.g. 919876543210"
-                style={{ width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }}
+              </div>
+              <Input label="Centre / Clinic Name" value={form.centreName} onChange={setF('centreName')} placeholder="e.g. Sunrise Diagnostics" required />
+              <Input label="Owner / Admin Name"   value={form.ownerName}  onChange={setF('ownerName')}  placeholder="Full name" required />
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Input label="Phone" type="tel" value={form.phone} onChange={setF('phone')} placeholder="+91 XXXXXXXXXX" />
+                <Input label="City"             value={form.city}  onChange={setF('city')}  placeholder="City" />
+              </div>
+              <Input label="Full Address" value={form.address} onChange={setF('address')} placeholder="Street, Area, City, PIN" />
+              <Btn type="button" onClick={handleSaveCentreInfo} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+                {saving ? 'Saving…' : '💾 Save Centre Info'}
+              </Btn>
+            </Section>
+
+            {isDiag && (
+              <Section title="Billing & GST">
+                <Select label="Default GST Rate" value={form.gst} onChange={setF('gst')} options={gstOpts} />
+                <Input label="GST Number" value={form.gstNumber} onChange={setF('gstNumber')} placeholder="22AAAAA0000A1Z5 (optional)" />
+                <Btn type="button" onClick={handleSaveBilling} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+                  {saving ? 'Saving…' : '💾 Save Billing Settings'}
+                </Btn>
+              </Section>
+            )}
+
+            {isClinic && (
+              <Section title="🔗 Online Appointment Booking">
+                <BookingLinkBox uid={user?.uid} />
+              </Section>
+            )}
+          </div>
+        )}
+
+        {/* ── CLINIC TAB ── */}
+        {activeTab === 'clinic' && isClinic && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <Section title="Appointment Settings">
+              <Select label="Slot Duration" value={form.slotDuration} onChange={setF('slotDuration')}
+                options={[
+                  { value: '5',  label: '5 minutes (12 slots/hour)' },
+                  { value: '10', label: '10 minutes (6 slots/hour)' },
+                  { value: '15', label: '15 minutes (4 slots/hour)' },
+                  { value: '20', label: '20 minutes (3 slots/hour)' },
+                  { value: '30', label: '30 minutes (2 slots/hour)' },
+                  { value: '60', label: '60 minutes (1 slot/hour)' },
+                ]}
               />
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
-                This number receives a WhatsApp notification whenever a patient books an appointment online and no doctor-specific number is available.
-                Enter in international format without + (e.g. 919876543210 for India).
-              </div>
-            </div>
-            <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-              {saving ? 'Saving…' : '💾 Save Clinic Settings'}
-            </Btn>
-          </Section>
-        )}
-
-        {(centreType === 'clinic' || centreType === 'both') && (
-          <Section title="👨‍⚕️ Doctors">
-            <DoctorsManager
-              doctors={form.doctors || []}
-              onChange={updated => setForm(f => ({ ...f, doctors: updated }))}
-            />
-            <Btn type="button" onClick={handleSaveDoctors} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-              {saving ? 'Saving…' : '💾 Save Doctors'}
-            </Btn>
-          </Section>
-        )}
-
-        {(centreType === 'clinic' || centreType === 'both') && (
-          <Section title="🔗 Online Appointment Booking">
-            <BookingLinkBox uid={user?.uid} />
-          </Section>
-        )}
-
-        {(centreType === 'diagnostic' || centreType === 'both') && (
-          <Section title="Billing & GST">
-            <Select label="Default GST Rate" value={form.gst} onChange={setF('gst')} options={gstOpts} />
-            <Input label="GST Number" value={form.gstNumber} onChange={setF('gstNumber')} placeholder="22AAAAA0000A1Z5 (optional)" />
-            <Btn type="button" onClick={handleSaveBilling} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-              {saving ? 'Saving…' : '💾 Save Billing Settings'}
-            </Btn>
-          </Section>
-        )}
-
-        <Section title="WhatsApp Campaigns">
-          <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.8 }}>
-            Add one entry per approved AiSynergy campaign. Paste the full cURL from AiSynergy → Campaigns → your campaign → API.
-            MediFlow reads the API key and campaign settings directly from the cURL — no manual configuration needed.
-          </div>
-
-          {/* Global API Key — masked */}
-          <ApiKeyField value={form.aisynergyApiKey || ''} onChange={v => setForm(f => ({ ...f, aisynergyApiKey: v }))} />
-
-          <div style={{ background: '#F0F9FF', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: '#0369A1', lineHeight: 1.9 }}>
-            <strong>Purpose codes:</strong><br />
-            <code>bill_generated</code> — sent when a patient bill is created<br />
-            <code>report_ready</code> — sent when report is marked ready<br />
-            <code>appt_confirm</code> — sent when appointment is booked (clinic)<br />
-            <code>followup</code> — sent for follow-up reminders (clinic)<br />
-            <code>vaccine_given</code> — sent when a vaccine is marked as given (params: childName, vaccineName, givenDate, nextVaccineInfo, centreName)
-          </div>
-
-          {(form.whatsappCampaigns || []).length === 0 && (
-            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--muted)', fontSize: 13 }}>
-              No campaigns added yet. Click + Add Campaign below.
-            </div>
-          )}
-
-          {(form.whatsappCampaigns || []).map((c, i) => {
-            const parsed  = parseCurl(c.curl)
-            const enabled = c.enabled !== false // default true
-            return (
-              <div key={i} style={{
-                border: `1.5px solid ${enabled ? 'var(--border)' : 'var(--border)'}`,
-                borderRadius: 12, padding: '14px 16px',
-                display: 'flex', flexDirection: 'column', gap: 10,
-                background: enabled ? 'var(--surface)' : 'var(--bg)',
-                opacity: enabled ? 1 : 0.7
-              }}>
-                {/* Header row */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 600,
-                      color: enabled ? 'var(--teal)' : 'var(--muted)',
-                      background: enabled ? 'var(--teal-light)' : 'var(--border)',
-                      padding: '3px 10px', borderRadius: 20
-                    }}>{c.purpose}</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.name}</span>
-                    {parsed && (
-                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                        · {parsed.paramCount} param{parsed.paramCount !== 1 ? 's' : ''}
-                        {parsed.hasMedia ? ' · document' : ''}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {/* Active / Paused toggle */}
-                    <button type="button" onClick={async () => {
-                      const updated = (form.whatsappCampaigns || []).map((x, j) =>
-                        j === i ? { ...x, enabled: !enabled } : x
-                      )
-                      setForm(f => ({ ...f, whatsappCampaigns: updated }))
-                      try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
-                    }} style={{
-                      padding: '4px 12px', borderRadius: 20, border: '1.5px solid',
-                      borderColor: enabled ? 'var(--teal)' : 'var(--border)',
-                      background: enabled ? 'var(--teal-light)' : 'none',
-                      color: enabled ? 'var(--teal)' : 'var(--muted)',
-                      fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                      fontFamily: 'DM Sans, sans-serif'
-                    }}>
-                      {enabled ? '● Active' : '○ Paused'}
-                    </button>
-                    <button type="button" onClick={async () => {
-                      const updated = (form.whatsappCampaigns || []).filter((_, j) => j !== i)
-                      setForm(f => ({ ...f, whatsappCampaigns: updated }))
-                      try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
-                    }} style={{
-                      background: 'var(--red-bg)', border: 'none', borderRadius: 8,
-                      color: 'var(--red)', fontSize: 11, fontWeight: 600, padding: '4px 10px',
-                      cursor: 'pointer', fontFamily: 'DM Sans, sans-serif'
-                    }}>✕ Delete</button>
-                  </div>
+              <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>🌅 Morning Session</div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <Input label="Start" type="time" value={form.morningStart} onChange={setF('morningStart')} />
+                  <Input label="End"   type="time" value={form.morningEnd}   onChange={setF('morningEnd')} />
                 </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginTop: 4 }}>🌆 Evening Session</div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <Input label="Start" type="time" value={form.eveningStart} onChange={setF('eveningStart')} />
+                  <Input label="End"   type="time" value={form.eveningEnd}   onChange={setF('eveningEnd')} />
+                </div>
+              </div>
 
-                {/* Campaign name chip */}
-                {parsed && (
-                  <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace',
-                    background: 'var(--bg)', padding: '5px 9px', borderRadius: 7,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                  }}>
-                    campaign: {parsed.campaignName}
+              <Select label="Late Check-in Queue Penalty" value={form.lateCheckinPenalty} onChange={setF('lateCheckinPenalty')}
+                options={[
+                  { value: '0', label: 'No penalty — go next in line immediately' },
+                  { value: '1', label: 'Wait 1 patient' },
+                  { value: '2', label: 'Wait 2 patients' },
+                  { value: '3', label: 'Wait 3 patients' },
+                  { value: '5', label: 'Wait 5 patients' },
+                ]}
+              />
+
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>Weekly Off Days</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, idx) => {
+                    const isOff = (form.weeklyOff || []).includes(idx)
+                    return (
+                      <button key={day} type="button"
+                        onClick={() => {
+                          const current = form.weeklyOff || []
+                          setForm(f => ({ ...f, weeklyOff: isOff ? current.filter(d => d !== idx) : [...current, idx] }))
+                        }}
+                        style={{ padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                          border: `1.5px solid ${isOff ? 'var(--red, #DC2626)' : 'var(--border)'}`,
+                          background: isOff ? '#FEF2F2' : 'var(--surface)', color: isOff ? '#DC2626' : 'var(--slate)' }}>
+                        {day}
+                      </button>
+                    )
+                  })}
+                </div>
+                {(form.weeklyOff || []).length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#DC2626', fontWeight: 500 }}>
+                    🚫 Closed on: {(form.weeklyOff || []).sort((a,b)=>a-b).map(d => ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d]).join(', ')}
                   </div>
                 )}
-
-                {/* Inline test row */}
-                <CampaignInlineTest
-                  campaign={c}
-                  centreName={form.centreName}
-                  campaigns={form.whatsappCampaigns || []}
-                />
               </div>
-            )
-          })}
 
-          <CampaignAdder globalApiKey={form.aisynergyApiKey} onAdd={async newC => {
-            const updated = [...(form.whatsappCampaigns || []), { ...newC, enabled: true }]
-            setForm(f => ({ ...f, whatsappCampaigns: updated }))
-            // Save immediately to Firestore so it persists without clicking Save Settings
-            try {
-              await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true })
-              setToast({ message: 'Campaign saved ✓', type: 'success' })
-            } catch(e) { console.error('Campaign save failed:', e) }
-          }} />
-        </Section>
+              <Btn type="button" onClick={handleSaveClinicSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+                {saving ? 'Saving…' : '💾 Save Clinic Settings'}
+              </Btn>
+            </Section>
 
-        {(centreType === 'clinic' || centreType === 'both') && profile?.modules?.vaccination && (
-          <Section title="💉 Vaccination Reminder Settings">
-            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.8 }}>
-              Set how many days before a vaccine is due to send WhatsApp reminders to parents.
-              Requires a campaign with purpose <code>vaccine_reminder</code> in WhatsApp Campaigns above.
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--slate)', display: 'block', marginBottom: 6 }}>
-                Send reminders (days before due date)
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {['7', '3', '1'].map(day => {
-                  const days = (form.vaccinationReminderDays || '7,3,1').split(',').map(s => s.trim())
-                  const checked = days.includes(day)
-                  return (
-                    <label key={day} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
-                      <input type="checkbox" checked={checked} onChange={() => {
-                        const current = (form.vaccinationReminderDays || '').split(',').map(s => s.trim()).filter(Boolean)
-                        const updated = checked ? current.filter(d => d !== day) : [...current, day]
-                        updated.sort((a,b) => Number(b) - Number(a))
-                        setForm(f => ({ ...f, vaccinationReminderDays: updated.join(',') }))
-                      }} style={{ width: 16, height: 16, accentColor: 'var(--teal)' }} />
-                      {day === '7' ? '7 days before (1 week)' : day === '3' ? '3 days before' : '1 day before'}
-                    </label>
-                  )
-                })}
-              </div>
-              <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>
-                Currently set: {form.vaccinationReminderDays || 'none'} days before due date
-              </div>
-            </div>
-            <Btn type="button" onClick={handleSaveVaccinationSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-              {saving ? 'Saving…' : '💾 Save Reminder Settings'}
-            </Btn>
-          </Section>
-        )}
-      </div>
-
-        <Section title="📋 Activity Log">
-          <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 12 }}>
-            Tracks all key actions — appointments, settings changes, prescriptions, and exports.
+            {profile?.modules?.vaccination && (
+              <Section title="💉 Vaccination Reminders">
+                <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.8 }}>
+                  Days before vaccine due date to send WhatsApp reminders. Requires <code>vaccine_reminder</code> campaign in WhatsApp tab.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {['7', '3', '1'].map(day => {
+                    const days = (form.vaccinationReminderDays || '7,3,1').split(',').map(s => s.trim())
+                    const checked = days.includes(day)
+                    return (
+                      <label key={day} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--navy)' }}>
+                        <input type="checkbox" checked={checked} onChange={() => {
+                          const current = (form.vaccinationReminderDays || '').split(',').map(s => s.trim()).filter(Boolean)
+                          const updated = checked ? current.filter(d => d !== day) : [...current, day]
+                          updated.sort((a,b) => Number(b) - Number(a))
+                          setForm(f => ({ ...f, vaccinationReminderDays: updated.join(',') }))
+                        }} style={{ width: 16, height: 16, accentColor: 'var(--teal)' }} />
+                        {day === '7' ? '7 days before (1 week)' : day === '3' ? '3 days before' : '1 day before'}
+                      </label>
+                    )
+                  })}
+                </div>
+                <Btn type="button" onClick={handleSaveVaccinationSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+                  {saving ? 'Saving…' : '💾 Save Reminder Settings'}
+                </Btn>
+              </Section>
+            )}
           </div>
-          <ActivityLog centreId={user?.uid} />
-        </Section>
+        )}
 
-        <Section title="📥 Patient Data Export">
-          <PatientExport centreId={user?.uid} ownerEmail={form.phone} centreName={form.centreName} user={user} />
-        </Section>
+        {/* ── WHATSAPP TAB ── */}
+        {activeTab === 'whatsapp' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <Section title="AiSynergy API">
+              <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--slate)', lineHeight: 1.8 }}>
+                Your AiSynergy API key is used for all WhatsApp messages sent by MediFlow. Get it from AiSynergy → Settings → API Key.
+              </div>
+              <ApiKeyField value={form.aisynergyApiKey || ''} onChange={v => setForm(f => ({ ...f, aisynergyApiKey: v }))} />
+            </Section>
 
+            <Section title="Notification Numbers">
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  Fallback WhatsApp Number
+                </label>
+                <input
+                  value={form.fallbackNotifyNumber}
+                  onChange={e => setForm(f => ({ ...f, fallbackNotifyNumber: e.target.value.replace(/\D/g,'').slice(0,12) }))}
+                  placeholder="e.g. 919876543210"
+                  style={{ width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }}
+                />
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+                  Receives booking notifications when no doctor-specific number is set. International format without + (e.g. 919876543210).
+                </div>
+              </div>
+              <Btn type="button" onClick={() => saveFields({ aisynergyApiKey: form.aisynergyApiKey, fallbackNotifyNumber: form.fallbackNotifyNumber })} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+                {saving ? 'Saving…' : '💾 Save WhatsApp Settings'}
+              </Btn>
+            </Section>
+
+            <Section title="Campaigns">
+              <div style={{ background: '#F0F9FF', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: '#0369A1', lineHeight: 1.9 }}>
+                <strong>Purpose codes:</strong><br />
+                <code>bill_generated</code> · <code>report_ready</code> · <code>appt_confirm</code> · <code>followup</code> · <code>vaccine_given</code> · <code>vaccine_reminder</code> · <code>booking_alert</code> · <code>doctor_session_report</code> · <code>doctor_schedule</code>
+              </div>
+
+              {(form.whatsappCampaigns || []).length === 0 && (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--muted)', fontSize: 13 }}>No campaigns yet. Add one below.</div>
+              )}
+
+              {(form.whatsappCampaigns || []).map((c, i) => {
+                const parsed  = parseCurl(c.curl)
+                const enabled = c.enabled !== false
+                return (
+                  <div key={i} style={{ border: '1.5px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, background: enabled ? 'var(--surface)' : 'var(--bg)', opacity: enabled ? 1 : 0.7 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: enabled ? 'var(--teal)' : 'var(--muted)', background: enabled ? 'var(--teal-light)' : 'var(--border)', padding: '3px 10px', borderRadius: 20 }}>{c.purpose}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.name}</span>
+                        {parsed && <span style={{ fontSize: 11, color: 'var(--muted)' }}>· {parsed.paramCount} params{parsed.hasMedia ? ' · doc' : ''}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button type="button" onClick={async () => {
+                          const updated = (form.whatsappCampaigns || []).map((x, j) => j === i ? { ...x, enabled: !enabled } : x)
+                          setForm(f => ({ ...f, whatsappCampaigns: updated }))
+                          try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
+                        }} style={{ padding: '4px 12px', borderRadius: 20, border: '1.5px solid', borderColor: enabled ? 'var(--teal)' : 'var(--border)', background: enabled ? 'var(--teal-light)' : 'none', color: enabled ? 'var(--teal)' : 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                          {enabled ? '● Active' : '○ Paused'}
+                        </button>
+                        <button type="button" onClick={async () => {
+                          const updated = (form.whatsappCampaigns || []).filter((_, j) => j !== i)
+                          setForm(f => ({ ...f, whatsappCampaigns: updated }))
+                          try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
+                        }} style={{ background: 'var(--red-bg)', border: 'none', borderRadius: 8, color: 'var(--red)', fontSize: 11, fontWeight: 600, padding: '4px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>✕ Delete</button>
+                      </div>
+                    </div>
+                    {parsed && (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', background: 'var(--bg)', padding: '5px 9px', borderRadius: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        campaign: {parsed.campaignName}
+                      </div>
+                    )}
+                    <CampaignInlineTest campaign={c} centreName={form.centreName} campaigns={form.whatsappCampaigns || []} />
+                  </div>
+                )
+              })}
+
+              <CampaignAdder globalApiKey={form.aisynergyApiKey} onAdd={async newC => {
+                const updated = [...(form.whatsappCampaigns || []), { ...newC, enabled: true }]
+                setForm(f => ({ ...f, whatsappCampaigns: updated }))
+                try {
+                  await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true })
+                  setToast({ message: 'Campaign saved ✓', type: 'success' })
+                } catch(e) { console.error(e) }
+              }} />
+            </Section>
+          </div>
+        )}
+
+        {/* ── DOCTORS TAB ── */}
+        {activeTab === 'doctors' && isClinic && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <Section title="👨‍⚕️ Doctors">
+              <DoctorsManager
+                doctors={form.doctors || []}
+                onChange={updated => setForm(f => ({ ...f, doctors: updated }))}
+              />
+              <Btn type="button" onClick={handleSaveDoctors} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+                {saving ? 'Saving…' : '💾 Save Doctors'}
+              </Btn>
+            </Section>
+          </div>
+        )}
+
+        {/* ── DATA TAB ── */}
+        {activeTab === 'data' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <Section title="📋 Activity Log">
+              <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 12 }}>
+                Tracks all key actions — appointments, settings changes, prescriptions, and exports.
+              </div>
+              <ActivityLog centreId={user?.uid} />
+            </Section>
+            <Section title="📥 Patient Data Export">
+              <PatientExport centreId={user?.uid} ownerEmail={form.phone} centreName={form.centreName} user={user} />
+            </Section>
+          </div>
+        )}
+
+      </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </Layout>
   )
