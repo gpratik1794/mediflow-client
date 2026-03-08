@@ -652,6 +652,8 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
 }
 
 
+const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
+
 function DoctorsManager({ doctors, onChange }) {
   const [adding, setAdding]   = useState(false)
   const [draft, setDraft]     = useState(EMPTY_DOCTOR)
