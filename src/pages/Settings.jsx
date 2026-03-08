@@ -418,7 +418,7 @@ const SCHEDULE_TIME_OPTIONS = [
 // ── Doctor Availability Component ────────────────────────────────────────────
 // Manages vacation dates and per-date slot count overrides
 // Shows a mini calendar — today onwards, vacation dates greyed, easy toggle
-function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onClose }) {
+function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onSave, onClose }) {
   const FMTS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const [sy, sm, sd] = ds.split('-').map(Number)
   const dateLabel = `${sd} ${FMTS[sm-1]} ${sy}`
@@ -516,7 +516,17 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onCl
             )}
           </div>
         )}
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 12, lineHeight: 1.6 }}>
+        <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+          <button type="button" onClick={onClose}
+            style={{ flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--slate)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+            Cancel
+          </button>
+          <button type="button" onClick={() => { onSave(); onClose() }}
+            style={{ flex: 2, padding: '10px', borderRadius: 9, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+            💾 Save Changes
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, lineHeight: 1.6 }}>
           Changes apply immediately for new bookings. Existing appointments are not affected.
         </div>
       </div>
@@ -525,7 +535,7 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onCl
 }
 
 
-function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
+function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSaveDoctors }) {
   const today = new Date(); today.setHours(0,0,0,0)
   const todayStr = today.toISOString().split('T')[0]
   const [calYear,  setCalYear]  = useState(today.getFullYear())
@@ -710,6 +720,7 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
         <DateModal ds={modalDay} unavail={unavail} overrides={overrides}
           onToggleLeave={toggleLeave}
           onSlotOverride={saveSlotOverride}
+          onSave={() => onSaveDoctors && onSaveDoctors(doctors)}
           onClose={() => setModalDay(null)} />
       )}
     </div>
@@ -719,7 +730,7 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange }) {
 
 const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
 
-function DoctorsManager({ doctors, onChange }) {
+function DoctorsManager({ doctors, onChange, onSaveDoctors }) {
   const [adding, setAdding]   = useState(false)
   const [draft, setDraft]     = useState(EMPTY_DOCTOR)
   const [expanded, setExpanded] = useState(null) // index of expanded doctor card
@@ -838,7 +849,7 @@ function DoctorsManager({ doctors, onChange }) {
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Used to send daily schedule notifications to this doctor.</div>
               </div>
               {/* Availability — vacation dates + slot overrides */}
-              <DoctorAvailability doctor={d} doctorIndex={i} doctors={doctors} onChange={onChange} />
+              <DoctorAvailability doctor={d} doctorIndex={i} doctors={doctors} onChange={onChange} onSaveDoctors={onSaveDoctors} />
             </div>
           )}
         </div>
@@ -1197,35 +1208,102 @@ export default function Settings() {
   const isClinic = centreType === 'clinic' || centreType === 'both'
   const isDiag   = centreType === 'diagnostic' || centreType === 'both'
 
-  // ── Tabs ──
+  // ── Tabs with drag-to-reorder, persisted per user ──
   const ALL_TABS = [
-    { key: 'general',   label: '🏥 General' },
-    { key: 'clinic',    label: '🗓️ Clinic',    show: isClinic },
-    { key: 'whatsapp',  label: '💬 WhatsApp' },
-    { key: 'doctors',   label: '👨‍⚕️ Doctors',   show: isClinic },
-    { key: 'data',      label: '📋 Data & Logs' },
+    { key: 'general',  label: '🏥 General' },
+    { key: 'clinic',   label: '🗓️ Clinic',     show: isClinic },
+    { key: 'whatsapp', label: '💬 WhatsApp' },
+    { key: 'doctors',  label: '👨‍⚕️ Doctors',    show: isClinic },
+    { key: 'data',     label: '📋 Data & Logs' },
   ]
-  const tabs = ALL_TABS.filter(t => t.show !== false)
-  const [activeTab, setActiveTab] = useState('general')
+  const visibleTabKeys = ALL_TABS.filter(t => t.show !== false).map(t => t.key)
 
-  const tabStyle = (key) => ({
-    padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
-    fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 600,
-    background: activeTab === key ? 'var(--teal)' : 'transparent',
+  const STORAGE_KEY = user?.uid ? `mf_tab_order_${user.uid}` : null
+
+  const getInitialOrder = () => {
+    try {
+      if (STORAGE_KEY) {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          // Merge: keep saved order, add any new tabs at end, drop removed ones
+          const valid = parsed.filter(k => visibleTabKeys.includes(k))
+          const added = visibleTabKeys.filter(k => !valid.includes(k))
+          return [...valid, ...added]
+        }
+      }
+    } catch(e) {}
+    return visibleTabKeys
+  }
+
+  const [tabOrder, setTabOrder] = useState(getInitialOrder)
+  const [activeTab, setActiveTab] = useState('general')
+  const [dragIdx, setDragIdx]   = useState(null)
+  const [dragOver, setDragOver] = useState(null)
+
+  // Persist whenever order changes
+  useEffect(() => {
+    if (STORAGE_KEY) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tabOrder)) } catch(e) {}
+    }
+  }, [tabOrder, STORAGE_KEY])
+
+  // Re-sync when user loads (uid might be null initially)
+  useEffect(() => {
+    if (user?.uid) setTabOrder(getInitialOrder())
+  }, [user?.uid])
+
+  const tabs = tabOrder.map(k => ALL_TABS.find(t => t.key === k)).filter(Boolean)
+
+  function handleDragStart(e, idx) {
+    setDragIdx(idx)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  function handleDragOver(e, idx) {
+    e.preventDefault()
+    setDragOver(idx)
+  }
+  function handleDrop(e, idx) {
+    e.preventDefault()
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOver(null); return }
+    const newOrder = [...tabOrder]
+    const [moved] = newOrder.splice(dragIdx, 1)
+    newOrder.splice(idx, 0, moved)
+    setTabOrder(newOrder)
+    setDragIdx(null); setDragOver(null)
+  }
+
+  const tabStyle = (key, isDragging, isOver) => ({
+    padding: '8px 14px', borderRadius: 8, border: isOver ? '2px dashed var(--teal)' : '2px solid transparent',
+    cursor: 'grab', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 600,
+    background: activeTab === key ? 'var(--teal)' : isDragging ? 'var(--bg)' : 'transparent',
     color: activeTab === key ? '#fff' : 'var(--slate)',
-    transition: 'all 0.15s', whiteSpace: 'nowrap',
+    opacity: isDragging ? 0.4 : 1,
+    transition: 'background 0.15s, opacity 0.15s', whiteSpace: 'nowrap',
+    userSelect: 'none',
   })
 
   return (
     <Layout title="Settings">
       <div style={{ maxWidth: 700 }}>
 
-        {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', padding: '2px 0 16px', WebkitOverflowScrolling: 'touch',
-          borderBottom: '2px solid var(--border)', marginBottom: 24 }}>
-          {tabs.map(t => (
-            <button key={t.key} type="button" style={tabStyle(t.key)} onClick={() => setActiveTab(t.key)}>{t.label}</button>
+        {/* Tab bar — draggable to reorder */}
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', padding: '2px 0 4px', WebkitOverflowScrolling: 'touch',
+          borderBottom: '2px solid var(--border)', marginBottom: 24, alignItems: 'center' }}>
+          {tabs.map((t, idx) => (
+            <button
+              key={t.key}
+              type="button"
+              draggable
+              onDragStart={e => handleDragStart(e, idx)}
+              onDragOver={e => handleDragOver(e, idx)}
+              onDrop={e => handleDrop(e, idx)}
+              onDragEnd={() => { setDragIdx(null); setDragOver(null) }}
+              style={tabStyle(t.key, dragIdx === idx, dragOver === idx)}
+              onClick={() => setActiveTab(t.key)}
+            >{t.label}</button>
           ))}
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 'auto', whiteSpace: 'nowrap', paddingRight: 4, flexShrink: 0 }}>drag to reorder</div>
         </div>
 
         {/* ── GENERAL TAB ── */}
@@ -1462,10 +1540,8 @@ export default function Settings() {
               <DoctorsManager
                 doctors={form.doctors || []}
                 onChange={updated => setForm(f => ({ ...f, doctors: updated }))}
+                onSaveDoctors={(latestDoctors) => saveFields({ doctors: latestDoctors ?? form.doctors })}
               />
-              <Btn type="button" onClick={handleSaveDoctors} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
-                {saving ? 'Saving…' : '💾 Save Doctors'}
-              </Btn>
             </Section>
           </div>
         )}
