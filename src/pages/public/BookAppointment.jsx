@@ -296,18 +296,30 @@ export default function BookAppointment() {
     unsubDateRef.current = onSnapshot(q, (snap) => {
       const counts = {}
       snap.docs.forEach(docSnap => {
-        const { date, appointmentTime, status } = docSnap.data()
-        if (!date || !appointmentTime || status === 'cancelled') return
+        const { date, appointmentTime, status, doctorName } = docSnap.data()
+        if (!date || !appointmentTime || appointmentTime === 'Walk-in (no slot)' || status === 'cancelled') return
         if (!counts[date]) counts[date] = { morning: 0, evening: 0 }
+        // Parse hour of booked slot
         const parts = appointmentTime.split(' ')
-        const period = parts[1]; const h = parseInt(parts[0].split(':')[0])
+        if (parts.length < 2) return
+        const period = parts[1]; const h = parseInt(parts[0].split(':')[0]); const m = parseInt(parts[0].split(':')[1] || '0')
         const hour24 = period === 'PM' && h !== 12 ? h + 12 : (period === 'AM' && h === 12 ? 0 : h)
-        if (hour24 < 14) counts[date].morning++
-        else counts[date].evening++
+        const slotMins = hour24 * 60 + m
+        // Get this doctor's override for the date
+        const docObj = selDoc ? doctors.find(d => (d?.name || d) === (selDoc?.name || selDoc)) : null
+        const overCfg = docObj?.slotOverrides?.[date] || {}
+        const mStartStr = overCfg.morningStart
+        const eStartStr = overCfg.eveningStart
+        // For morning: only count if >= morningStart override (or default clinic morning start)
+        const morningStartMins = mStartStr ? timeToMinutes(mStartStr) : timeToMinutes(centre?.morningStart || '09:00')
+        const morningEndMins = timeToMinutes(centre?.morningEnd || '13:00')
+        const eveningStartMins = eStartStr ? timeToMinutes(eStartStr) : timeToMinutes(centre?.eveningStart || '16:00')
+        if (slotMins >= morningStartMins && slotMins < morningEndMins) counts[date].morning++
+        else if (slotMins >= eveningStartMins) counts[date].evening++
       })
       setDateBookedCounts(counts)
     }, (e) => console.warn('dateBookedCounts:', e))
-  }, [centreId, selDoc])
+  }, [centreId, selDoc, centre, doctors])
 
   // ── Derived slot lists ──
   const duration    = parseInt(centre?.slotDuration || '30')

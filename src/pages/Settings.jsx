@@ -4,7 +4,7 @@ import { useAuth } from '../utils/AuthContext'
 import Layout from '../components/Layout'
 import { Card, CardHeader, Input, Select, Btn, Toast } from '../components/UI'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
-import { logActivity, getActivityLog, getAllPatients } from '../firebase/clinicDb'
+import { logActivity, getActivityLog, getAllPatients, getAppointments } from '../firebase/clinicDb'
 import { db } from '../firebase/config'
 import { parseCurl, sendCampaign } from '../firebase/whatsapp'
 
@@ -418,7 +418,7 @@ const SCHEDULE_TIME_OPTIONS = [
 // ── Doctor Availability Component ────────────────────────────────────────────
 // Manages vacation dates and per-date slot count overrides
 // Shows a mini calendar — today onwards, vacation dates greyed, easy toggle
-function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onSave, onClose }) {
+function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onSave, onClose, appointments, bookingUrl, campaigns, aisynergyApiKey, centreName }) {
   const FMTS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const [sy, sm, sd] = ds.split('-').map(Number)
   const dateLabel = `${sd} ${FMTS[sm-1]} ${sy}`
@@ -433,10 +433,69 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onSa
   const eLabel  = eVal === 'off' ? 'Closed' : eVal === 'all' ? 'All slots' : `${eVal} slots`
   const sStyle  = { width: '100%', padding: '8px 10px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)' }
 
+  // ── Reschedule ──
+  const [sending, setSending] = useState({})
+  const [sent, setSent]       = useState({})
+
+  // Determine reschedule scenario per appointment
+  function getRescheduleScenario(appt) {
+    if (isOff) return 'full_day'
+    const sess = appt.session || (appt.appointmentTime && appt.appointmentTime.includes(':') ?
+      (() => { const p = appt.appointmentTime.split(' '); const h = parseInt(p[0]); const ampm = p[1]; const h24 = ampm === 'PM' && h !== 12 ? h+12 : (ampm==='AM'&&h===12?0:h); return h24 < 14 ? 'morning' : 'evening' })() : null)
+    if (!sess) return 'full_day'
+    const sessOverride = cfg[sess]
+    const otherSess = sess === 'morning' ? 'evening' : 'morning'
+    const otherOverride = cfg[otherSess]
+    if (sessOverride === 'off') {
+      if (otherOverride !== 'off') return `session_off_${sess}`
+      return 'full_day'
+    }
+    if (mStart && sess === 'morning') return 'start_time_change'
+    if (eStart && sess === 'evening') return 'start_time_change'
+    return 'slots_limited'
+  }
+
+  async function sendReschedule(appt) {
+    const key = appt.id
+    setSending(s => ({ ...s, [key]: true }))
+    try {
+      const scenario = getRescheduleScenario(appt)
+      const link = bookingUrl || window.location.origin + '/book'
+      let msg = ''
+      if (scenario === 'full_day') {
+        msg = `Hi ${appt.patientName}, your appointment at ${centreName || 'the clinic'} on ${dateLabel} has been cancelled as the doctor is unavailable for the day. Please reschedule your appointment at: ${link}`
+      } else if (scenario === 'session_off_morning') {
+        msg = `Hi ${appt.patientName}, the morning session on ${dateLabel} at ${centreName || 'the clinic'} has been closed. The evening session is still available — please reschedule at: ${link}`
+      } else if (scenario === 'session_off_evening') {
+        msg = `Hi ${appt.patientName}, the evening session on ${dateLabel} at ${centreName || 'the clinic'} has been closed. The morning session is still available — please reschedule at: ${link}`
+      } else if (scenario === 'start_time_change') {
+        const newStart = appt.session === 'morning' ? mStart : eStart
+        msg = `Hi ${appt.patientName}, please note that the doctor's session on ${dateLabel} at ${centreName || 'the clinic'} will now start at ${newStart} instead of the usual time. Please update your plan or reschedule at: ${link}`
+      } else {
+        msg = `Hi ${appt.patientName}, your appointment on ${dateLabel} at ${centreName || 'the clinic'} may be affected due to slot changes. Please confirm or reschedule at: ${link}`
+      }
+      // Use appt_reschedule campaign if available, otherwise use plain WA via AiSynergy
+      const rescheduleCampaign = (campaigns || []).find(c => c.purpose === 'appt_reschedule' && c.enabled !== false)
+      if (rescheduleCampaign) {
+        const { sendCampaign } = await import('../firebase/whatsapp')
+        await sendCampaign([rescheduleCampaign], 'appt_reschedule', appt.phone, [appt.patientName, dateLabel, link, msg])
+      } else if (aisynergyApiKey) {
+        // Direct plain text WA via AiSynergy /send-message endpoint
+        await fetch('https://app.aisynergy.io/api/send-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aisynergyApiKey}` },
+          body: JSON.stringify({ phone: '91' + appt.phone, message: msg })
+        })
+      }
+      setSent(s => ({ ...s, [key]: true }))
+    } catch(e) { console.error('Reschedule WA error:', e) }
+    setSending(s => ({ ...s, [key]: false }))
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>📅 {dateLabel}</div>
@@ -516,6 +575,57 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onSa
             )}
           </div>
         )}
+
+        {/* ── Affected appointments & reschedule ── */}
+        {appointments && appointments.length > 0 && (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>
+              📋 {appointments.length} appointment{appointments.length !== 1 ? 's' : ''} on this day
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--slate)', marginBottom: 10, lineHeight: 1.5 }}>
+              {isOff ? 'Doctor is unavailable — send reschedule messages to all patients.' :
+               mVal === 'off' ? 'Morning session closed — morning patients should reschedule.' :
+               eVal === 'off' ? 'Evening session closed — evening patients should reschedule.' :
+               mStart || eStart ? 'Doctor start time changed — affected patients should be notified.' :
+               'Slots have been updated for this day.'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {appointments.filter(a => a.status !== 'cancelled').map(appt => {
+                const scenario = getRescheduleScenario(appt)
+                const scenarioLabel = scenario === 'full_day' ? '🔴 Full day off' :
+                  scenario === 'session_off_morning' ? '🌅 Morning closed' :
+                  scenario === 'session_off_evening' ? '🌆 Evening closed' :
+                  scenario === 'start_time_change' ? '⏰ Time changed' : '📊 Slots limited'
+                const needsReschedule = isOff || scenario !== 'slots_limited'
+                return (
+                  <div key={appt.id} style={{ background: needsReschedule ? '#FEF2F2' : 'var(--bg)', border: `1px solid ${needsReschedule ? '#FECACA' : 'var(--border)'}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy)' }}>{appt.patientName}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{appt.appointmentTime || 'Walk-in'} · {appt.phone}</div>
+                      <div style={{ fontSize: 10, color: needsReschedule ? '#DC2626' : 'var(--muted)', marginTop: 2 }}>{scenarioLabel}</div>
+                    </div>
+                    {appt.phone && (
+                      <button type="button"
+                        disabled={sending[appt.id] || sent[appt.id]}
+                        onClick={() => sendReschedule(appt)}
+                        style={{ padding: '6px 12px', borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', cursor: sent[appt.id] ? 'default' : 'pointer',
+                          background: sent[appt.id] ? '#D1FAE5' : '#25D366', color: sent[appt.id] ? '#065F46' : '#fff',
+                          opacity: sending[appt.id] ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                        {sending[appt.id] ? 'Sending…' : sent[appt.id] ? '✓ Sent' : '📲 Send WA'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <button type="button"
+              onClick={() => appointments.filter(a => a.status !== 'cancelled' && a.phone).forEach(a => sendReschedule(a))}
+              style={{ width: '100%', marginTop: 10, padding: '9px', borderRadius: 9, border: 'none', background: '#25D366', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+              📲 Send to All Patients
+            </button>
+          </div>
+        )}
+
         <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
           <button type="button" onClick={onClose}
             style={{ flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--slate)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
@@ -527,20 +637,19 @@ function DateModal({ ds, unavail, overrides, onToggleLeave, onSlotOverride, onSa
           </button>
         </div>
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, lineHeight: 1.6 }}>
-          Changes apply immediately for new bookings. Existing appointments are not affected.
+          Changes apply immediately for new bookings. Existing appointments are not affected automatically.
         </div>
       </div>
     </div>
   )
 }
-
-
-function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSaveDoctors }) {
+function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSaveDoctors, centreId, bookingUrl, campaigns, aisynergyApiKey, centreName }) {
   const today = new Date(); today.setHours(0,0,0,0)
   const todayStr = today.toISOString().split('T')[0]
   const [calYear,  setCalYear]  = useState(today.getFullYear())
   const [calMonth, setCalMonth] = useState(today.getMonth())
   const [modalDay, setModalDay] = useState(null)
+  const [modalAppts, setModalAppts] = useState([])
 
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa']
@@ -653,7 +762,17 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSa
           }
           return (
             <button key={ds} type="button"
-              onClick={() => { if (!isPast) setModalDay(ds) }}
+              onClick={() => {
+                if (!isPast) {
+                  setModalDay(ds)
+                  if (centreId) {
+                    getAppointments(centreId, ds).then(appts => {
+                      const docAppts = appts.filter(a => !d.name || !a.doctorName || a.doctorName === d.name)
+                      setModalAppts(docAppts)
+                    }).catch(() => setModalAppts([]))
+                  } else { setModalAppts([]) }
+                }
+              }}
               disabled={isPast}
               title={isOff ? 'Leave' : hasOver ? 'Override set — click to edit' : isToday ? 'Today' : 'Click to configure'}
               style={{
@@ -721,7 +840,13 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSa
           onToggleLeave={toggleLeave}
           onSlotOverride={saveSlotOverride}
           onSave={() => onSaveDoctors && onSaveDoctors(doctors)}
-          onClose={() => setModalDay(null)} />
+          onClose={() => setModalDay(null)}
+          appointments={modalAppts}
+          bookingUrl={bookingUrl}
+          campaigns={campaigns}
+          aisynergyApiKey={aisynergyApiKey}
+          centreName={centreName}
+        />
       )}
     </div>
   )
@@ -730,7 +855,7 @@ function DoctorAvailability({ doctor: d, doctorIndex: i, doctors, onChange, onSa
 
 const EMPTY_DOCTOR = { name: '', degree: '', speciality: '', phone: '', firstVisitFee: '', repeatVisitFee: '', scheduleNotifyTime: '21:00' }
 
-function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor }) {
+function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor, centreId, bookingUrl, campaigns, aisynergyApiKey, centreName }) {
   const [adding, setAdding]   = useState(false)
   const [draft, setDraft]     = useState(EMPTY_DOCTOR)
   const [err, setErr]         = useState('')
@@ -845,7 +970,8 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor }) {
             {/* Availability — vacation dates + slot overrides */}
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📆 Availability & Slot Overrides</div>
-              <DoctorAvailability doctor={d} doctorIndex={i} doctors={doctors} onChange={onChange} onSaveDoctors={onSaveDoctors} />
+              <DoctorAvailability doctor={d} doctorIndex={i} doctors={doctors} onChange={onChange} onSaveDoctors={onSaveDoctors}
+                centreId={centreId} bookingUrl={bookingUrl} campaigns={campaigns} aisynergyApiKey={aisynergyApiKey} centreName={centreName} />
             </div>
             {/* Save button per doctor */}
             <button type="button"
@@ -1567,6 +1693,11 @@ export default function Settings() {
                   saveFields({ doctors: updated })
                   logActivity(user.uid, { action: 'doctor_removed', label: 'Doctor Removed', detail: name, by: user?.email || '' })
                 }}
+                centreId={user?.uid}
+                bookingUrl={`${window.location.origin}/book/${user?.uid}`}
+                campaigns={form.whatsappCampaigns || []}
+                aisynergyApiKey={form.aisynergyApiKey}
+                centreName={form.centreName}
               />
             </Section>
           </div>

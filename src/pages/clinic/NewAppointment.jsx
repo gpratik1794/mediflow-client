@@ -52,7 +52,7 @@ export default function NewAppointment() {
   const [form, setForm] = useState({
     patientName: '', phone: searchParams.get('phone') || '',
     age: '', dob: '', gender: '',
-    visitType: 'New Visit', appointmentTime: 'Walk-in (no slot)',
+    visitType: 'New Visit', appointmentTime: '',
     date: today, chiefComplaint: '', refDoctor: '',
     consultationFee: '', paymentStatus: 'pending'
   })
@@ -97,6 +97,10 @@ export default function NewAppointment() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.patientName || !form.phone) return
+    if (!form.appointmentTime) {
+      setToast({ message: 'Please select a time slot before booking.', type: 'error' })
+      return
+    }
     if (submittingRef.current) return
     submittingRef.current = true
     if (form.appointmentTime !== 'Walk-in (no slot)') {
@@ -233,11 +237,16 @@ export default function NewAppointment() {
                   <input type="date" value={form.date} onChange={setF('date')} min={today} style={iStyle} />
                 </div>
                 <div>
-                  <label style={lStyle}>Time Slot</label>
+                  <label style={lStyle}>Time Slot <span style={{ color: '#DC2626' }}>*</span></label>
+                  {!form.appointmentTime && (
+                    <div style={{ fontSize: 11, color: '#D97706', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 7, padding: '6px 10px', marginBottom: 7 }}>
+                      ⚠️ Select a slot to enable booking
+                    </div>
+                  )}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
                     {TIME_SLOTS.map(slot => {
                       const isBooked = slot !== 'Walk-in (no slot)' && bookedSlots.includes(slot)
-                      const isSel    = form.appointmentTime === slot
+                      const isSel    = form.appointmentTime === slot && slot !== ''
                       // Disable past slots only for today
                       let isPast = false
                       if (slot !== 'Walk-in (no slot)' && form.date === today) {
@@ -300,8 +309,8 @@ export default function NewAppointment() {
                 <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 4 }}>📅 {form.date}</div>
                 <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 4 }}>🕐 {form.appointmentTime}</div>
                 <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 16 }}>🏥 {form.visitType}</div>
-                <Btn type="submit" disabled={loading || !form.patientName || !form.phone} style={{ width: '100%', justifyContent: 'center' }}>
-                  {loading ? 'Booking…' : '✓ Confirm Booking'}
+                <Btn type="submit" disabled={loading || !form.patientName || !form.phone || !form.appointmentTime} style={{ width: '100%', justifyContent: 'center' }}>
+                  {loading ? 'Booking…' : form.appointmentTime ? '✓ Confirm Booking' : 'Select a time slot to book'}
                 </Btn>
                 <Btn variant="ghost" onClick={() => navigate(-1)} style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>Cancel</Btn>
               </div>
