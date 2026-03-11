@@ -52,7 +52,7 @@ export default function NewAppointment() {
   const [form, setForm] = useState({
     patientName: '', phone: searchParams.get('phone') || '',
     age: '', dob: '', gender: '',
-    visitType: 'New Visit', appointmentTime: '',
+    visitType: 'New Visit', appointmentTime: '', doctorName: '',
     date: today, chiefComplaint: '', refDoctor: '',
     consultationFee: '', paymentStatus: 'pending'
   })
@@ -61,9 +61,18 @@ export default function NewAppointment() {
   useEffect(() => {
     if (!user) return
     getAppointments(user.uid, form.date).then(ex =>
-      setBookedSlots(ex.filter(a => a.status !== 'cancelled').map(a => a.appointmentTime))
+      setBookedSlots(
+        ex
+          .filter(a => a.status !== 'cancelled')
+          .filter(a => {
+            // Only show slots booked for the same doctor; if no doctor set yet, show all
+            if (!form.doctorName || !a.doctorName) return true
+            return a.doctorName === form.doctorName
+          })
+          .map(a => a.appointmentTime)
+      )
     )
-  }, [form.date, user])
+  }, [form.date, form.doctorName, user])
 
   const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -105,10 +114,14 @@ export default function NewAppointment() {
     submittingRef.current = true
     if (form.appointmentTime !== 'Walk-in (no slot)') {
       const ex = await getAppointments(user.uid, form.date)
-      const conflict = ex.find(a => a.appointmentTime === form.appointmentTime && a.status !== 'cancelled')
+      const conflict = ex.find(a => {
+        if (a.appointmentTime !== form.appointmentTime || a.status === 'cancelled') return false
+        if (a.doctorName && form.doctorName) return a.doctorName === form.doctorName
+        return true
+      })
       if (conflict) {
         setToast({ message: `${form.appointmentTime} is already booked.`, type: 'error' })
-        setBookedSlots(ex.filter(a => a.status !== 'cancelled').map(a => a.appointmentTime))
+        setBookedSlots(ex.filter(a => a.status !== 'cancelled' && (!a.doctorName || !form.doctorName || a.doctorName === form.doctorName)).map(a => a.appointmentTime))
         submittingRef.current = false
         return
       }
@@ -141,8 +154,17 @@ export default function NewAppointment() {
     submittingRef.current = false
   }
 
-  const MORNING_SLOTS = generateSlots(profile?.morningStart || '09:00', profile?.morningEnd || '13:00', profile?.slotDuration)
-  const EVENING_SLOTS = generateSlots(profile?.eveningStart || '16:00', profile?.eveningEnd || '20:00', profile?.slotDuration)
+  const doctors = profile?.doctors || []
+  // Find selected doctor object (if any)
+  const selDocObj = doctors.find(d => d.name === form.doctorName) || null
+  // Use selected doctor's timing, fall back to profile (clinic) defaults
+  const docMorningStart = selDocObj?.morningStart || profile?.morningStart || '09:00'
+  const docMorningEnd   = selDocObj?.morningEnd   || profile?.morningEnd   || '13:00'
+  const docEveningStart = selDocObj?.eveningStart || profile?.eveningStart || '16:00'
+  const docEveningEnd   = selDocObj?.eveningEnd   || profile?.eveningEnd   || '20:00'
+  const docDuration     = selDocObj?.slotDuration || profile?.slotDuration || '30'
+  const MORNING_SLOTS = generateSlots(docMorningStart, docMorningEnd, docDuration)
+  const EVENING_SLOTS = generateSlots(docEveningStart, docEveningEnd, docDuration)
   const TIME_SLOTS = [...MORNING_SLOTS, ...EVENING_SLOTS]
 
   return (
@@ -235,6 +257,16 @@ export default function NewAppointment() {
                 <div>
                   <label style={lStyle}>Date</label>
                   <input type="date" value={form.date} onChange={setF('date')} min={today} style={iStyle} />
+                </div>
+                {doctors.length > 0 && (
+                  <div>
+                    <label style={lStyle}>Doctor</label>
+                    <select value={form.doctorName} onChange={e => setForm(f => ({ ...f, doctorName: e.target.value, appointmentTime: '' }))} style={iStyle}>
+                      <option value="">-- Select Doctor --</option>
+                      {doctors.map(d => <option key={d.name} value={d.name}>{d.name}{d.speciality ? ` · ${d.speciality}` : ''}</option>)}
+                    </select>
+                  </div>
+                )}
                 </div>
                 <div>
                   <label style={lStyle}>Time Slot <span style={{ color: '#DC2626' }}>*</span></label>

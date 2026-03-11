@@ -266,7 +266,7 @@ export default function BookAppointment() {
     }
   }, [centreId])
 
-  // ── Real-time booked slots for selected date ──
+  // ── Real-time booked slots for selected date (per doctor) ──
   useEffect(() => {
     if (!selDate || !centreId) return
     setSlotsLoading(true)
@@ -278,7 +278,16 @@ export default function BookAppointment() {
       where('status', 'in', ['scheduled', 'waiting', 'in-consultation', 'done'])
     )
     unsubBookedRef.current = onSnapshot(q, (snap) => {
-      const taken = snap.docs.map(d => d.data().appointmentTime).filter(Boolean)
+      const selDocName = selDoc?.name || selDoc || null
+      const taken = snap.docs
+        .filter(d => {
+          const dn = d.data().doctorName
+          // If both sides have a name, they must match. If either is missing, include (legacy data)
+          if (selDocName && dn) return dn === selDocName
+          return true
+        })
+        .map(d => d.data().appointmentTime)
+        .filter(Boolean)
       setBookedSlots(taken)
       setSlotsLoading(false)
     }, (e) => {
@@ -286,7 +295,7 @@ export default function BookAppointment() {
       setBookedSlots([])
       setSlotsLoading(false)
     })
-  }, [selDate, centreId])
+  }, [selDate, centreId, selDoc])
 
   // ── Real-time booked counts for all 14 date chips ──
   useEffect(() => {
@@ -515,12 +524,23 @@ export default function BookAppointment() {
           )
         )
 
-        // Check for slot conflict
-        const conflict = apptSnap.docs.find(d => d.data().appointmentTime === selSlot)
+        // Check for slot conflict — only for the same doctor
+        const conflict = apptSnap.docs.find(d => {
+          const data = d.data()
+          if (data.appointmentTime !== selSlot) return false
+          // If doctorName recorded, must match selected doctor
+          if (data.doctorName && docName) return data.doctorName === docName
+          return true // legacy: no doctorName → treat as conflict to be safe
+        })
         if (conflict) throw new Error('SLOT_TAKEN')
 
-        // Check duplicate — same patient already booked for this date
-        const duplicate = apptSnap.docs.find(d => d.data().phone === phone.trim())
+        // Check duplicate — same patient already booked for same doctor on this date
+        const duplicate = apptSnap.docs.find(d => {
+          const data = d.data()
+          if (data.phone !== phone.trim()) return false
+          if (data.doctorName && docName) return data.doctorName === docName
+          return true
+        })
         if (duplicate) throw new Error('ALREADY_BOOKED')
 
         // Calculate next token — per session using time-based detection
@@ -537,7 +557,10 @@ export default function BookAppointment() {
         const sessionTokens = apptSnap.docs
           .filter(d => d.data().status !== 'cancelled')
           .filter(d => {
-            const apptSession = d.data().session || getApptSession(d.data().appointmentTime)
+            const data = d.data()
+            // Must be same doctor (if doctorName recorded)
+            if (data.doctorName && docName && data.doctorName !== docName) return false
+            const apptSession = data.session || getApptSession(data.appointmentTime)
             return apptSession === selSession
           })
           .map(d => d.data().tokenNumber || 0)
