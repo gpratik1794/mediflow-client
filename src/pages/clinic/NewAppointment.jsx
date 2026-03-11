@@ -267,7 +267,6 @@ export default function NewAppointment() {
                     </select>
                   </div>
                 )}
-                </div>
                 <div>
                   <label style={lStyle}>Time Slot <span style={{ color: '#DC2626' }}>*</span></label>
                   {!form.appointmentTime && (
