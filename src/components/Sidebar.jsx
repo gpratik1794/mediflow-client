@@ -58,7 +58,7 @@ export default function Sidebar() {
       { to: '/clinic', label: 'Dashboard', icon: '▦' },
       { section: 'Patients' },
       { to: '/clinic/appointments', label: 'Appointments', icon: '📅' },
-      { to: '/clinic/patients',     label: 'Patients',     icon: '👥' },
+      { to: '/clinic/patients',     label: 'Marketing',    icon: '📣' },
       { to: '/clinic/followups',    label: 'Follow-ups',   icon: '🔔' },
     ]
     if (modules?.vaccination) {

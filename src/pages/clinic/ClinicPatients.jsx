@@ -25,7 +25,7 @@ export default function ClinicPatients() {
   const [patients, setPatients] = useState([])
   const [search, setSearch]     = useState('')
   const [loading, setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState('patients') // 'patients' | 'marketing'
+  const [activeTab, setActiveTab] = useState('marketing') // 'patients' | 'marketing'
 
   // Marketing tab state
   const [filterTag, setFilterTag]   = useState('')
@@ -111,7 +111,7 @@ export default function ClinicPatients() {
   }
 
   return (
-    <Layout title="Patients"
+    <Layout title="Marketing"
       action={
         <div style={{ display: 'flex', gap: 8 }}>
           <Btn variant="ghost" small onClick={exportCSV}>⬇ Export CSV</Btn>
@@ -121,7 +121,7 @@ export default function ClinicPatients() {
     >
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
-        {[['patients','👥 Patients'], ['marketing','📣 Marketing']].map(([tab, label]) => (
+        {[['marketing','📣 Campaigns'], ['patients','👥 Patients']].map(([tab, label]) => (
           <button key={tab} onClick={() => { setActiveTab(tab); setWaSentCount(null) }} style={{
             padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: activeTab === tab ? 700 : 400,

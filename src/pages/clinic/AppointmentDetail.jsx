@@ -320,7 +320,7 @@ export default function AppointmentDetail() {
                   type="text" inputMode="numeric" pattern="[0-9]*"
                   value={fee} onChange={e => setFee(e.target.value.replace(/\D/g, ''))}
                   placeholder="e.g. 500"
-                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box', MozAppearance: 'textfield' }}
+                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box', MozAppearance: 'textfield', WebkitAppearance: 'none', appearance: 'none' }}
                   onFocus={e => e.target.style.borderColor = 'var(--teal)'}
                   onBlur={e => e.target.style.borderColor = 'var(--border)'}
                 />
