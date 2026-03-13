@@ -41,6 +41,8 @@ export default function AdminClientDetail() {
   async function handleSave() {
     setSaving(true)
     const selectedPlan = PLANS[form.plan]
+    // centreType: prefer explicit override, else derive from plan
+    const centreType = form.centreTypeOverride || selectedPlan?.centreType || form.centreType || 'diagnostic'
     await updateClient(id, {
       centreName: form.centreName,
       ownerName: form.ownerName,
@@ -51,7 +53,8 @@ export default function AdminClientDetail() {
       subscriptionEndDate: form.subscriptionEndDate,
       city: form.city,
       address: form.address,
-      ...(selectedPlan?.centreType ? { centreType: selectedPlan.centreType } : {}),
+      centreType,
+      maxStaff: parseInt(form.maxStaff) || 1,
     })
     // Auto-apply modules from plan
     if (selectedPlan?.modules) {
@@ -152,6 +155,23 @@ export default function AdminClientDetail() {
                   <EditField label="Phone" value={form.phone} onChange={setF('phone')} />
                   <EditField label="City" value={form.city} onChange={setF('city')} />
                   <EditField label="Address" value={form.address} onChange={setF('address')} />
+                  <div>
+                    <label style={lStyle}>Centre Type</label>
+                    <select value={form.centreTypeOverride || form.centreType || 'diagnostic'} onChange={setF('centreTypeOverride')} style={inputStyle}>
+                      <option value="clinic">Clinic</option>
+                      <option value="diagnostic">Diagnostic Centre</option>
+                      <option value="both">Clinic + Diagnostic</option>
+                    </select>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Overrides the plan default. Syncs to client login immediately.</div>
+                  </div>
+                  <div>
+                    <label style={lStyle}>Max Staff Accounts (including admin)</label>
+                    <input type="number" min="1" max="20" value={form.maxStaff || 1} onChange={setF('maxStaff')} style={inputStyle}
+                      onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                      onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    />
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Set to 2 = admin + 1 staff. Client cannot create more than this.</div>
+                  </div>
                 </>
               ) : (
                 <>
@@ -161,7 +181,8 @@ export default function AdminClientDetail() {
                   <InfoRow label="Phone"         value={client.phone || '—'} />
                   <InfoRow label="City"          value={client.city || '—'} />
                   <InfoRow label="Address"       value={client.address || '—'} />
-                  <InfoRow label="Centre Type"   value={client.centreType === 'both' ? 'Diagnostic + Clinic' : client.centreType} />
+                  <InfoRow label="Centre Type"   value={client.centreType === 'both' ? 'Diagnostic + Clinic' : (client.centreType || 'diagnostic')} />
+                  <InfoRow label="Max Staff"     value={client.maxStaff ? `${client.maxStaff} accounts (incl. admin)` : '1 (admin only)'} />
                   <InfoRow label="Firebase UID"  value={<span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--muted)' }}>{id}</span>} />
                 </>
               )}

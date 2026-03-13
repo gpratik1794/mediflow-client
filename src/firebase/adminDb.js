@@ -36,6 +36,17 @@ export async function createClientRecord(centreId, data) {
 export async function updateClient(centreId, data) {
   const ref = doc(db, 'clients', centreId)
   await updateDoc(ref, { ...data, updatedAt: serverTimestamp() })
+  // Sync centreType and maxStaff to centres profile so AuthContext picks them up on login
+  const profileUpdate = {}
+  if (data.centreType !== undefined) profileUpdate.centreType = data.centreType
+  if (data.maxStaff !== undefined)   profileUpdate.maxStaff   = data.maxStaff
+  if (Object.keys(profileUpdate).length > 0) {
+    await setDoc(
+      doc(db, 'centres', centreId, 'profile', 'main'),
+      profileUpdate,
+      { merge: true }
+    )
+  }
 }
 
 export async function deactivateClient(centreId) {
