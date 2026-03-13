@@ -18,28 +18,6 @@ const DIAGNOSTIC_NAV = [
   { to: '/settings', label: 'Settings',        icon: '⚙' },
 ]
 
-function buildClinicNav(modules) {
-  const nav = [
-    { section: 'Overview' },
-    { to: '/clinic',              label: 'Dashboard',        icon: '▦' },
-    { section: 'Patients' },
-    { to: '/clinic/appointments', label: 'Appointments',     icon: '📅' },
-    { to: '/clinic/patients',     label: 'Patients',         icon: '👥' },
-    { to: '/clinic/followups',    label: 'Follow-ups',       icon: '🔔' },
-  ]
-  if (modules?.vaccination) {
-    nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
-  }
-  nav.push(
-    { section: 'Doctor' },
-    { to: '/clinic/prescription/new', label: 'New Prescription', icon: '💊' },
-    { section: 'Manage' },
-    { to: '/clinic/reports', label: 'Reports', icon: '📊' },
-    { to: '/settings', label: 'Settings', icon: '⚙' }
-  )
-  return nav
-}
-
 function buildBothNav(modules) {
   const nav = [
     { section: 'Clinic' },
@@ -67,11 +45,42 @@ function buildBothNav(modules) {
 }
 
 export default function Sidebar() {
-  const { profile } = useAuth()
+  const { profile, role, userRecord } = useAuth()
   const navigate = useNavigate()
 
   const centreType = profile?.centreType || 'diagnostic'
   const modules    = profile?.modules || {}
+  const isReceptionist = role === 'receptionist'
+
+  function buildClinicNav(modules) {
+    const nav = [
+      { section: 'Overview' },
+      { to: '/clinic', label: 'Dashboard', icon: '▦' },
+      { section: 'Patients' },
+      { to: '/clinic/appointments', label: 'Appointments', icon: '📅' },
+      { to: '/clinic/patients',     label: 'Patients',     icon: '👥' },
+      { to: '/clinic/followups',    label: 'Follow-ups',   icon: '🔔' },
+    ]
+    if (modules?.vaccination) {
+      nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
+    }
+    // Receptionist cannot see Prescription or Reports
+    if (!isReceptionist) {
+      nav.push(
+        { section: 'Doctor' },
+        { to: '/clinic/prescription/new', label: 'New Prescription', icon: '💊' },
+        { section: 'Manage' },
+        { to: '/clinic/reports',  label: 'Reports',  icon: '📊' },
+        { to: '/settings',        label: 'Settings', icon: '⚙' }
+      )
+    } else {
+      nav.push(
+        { section: 'Manage' },
+        { to: '/settings', label: 'Settings', icon: '⚙' }
+      )
+    }
+    return nav
+  }
 
   const nav = centreType === 'clinic' ? buildClinicNav(modules)
             : centreType === 'both'   ? buildBothNav(modules)
@@ -132,11 +141,15 @@ export default function Sidebar() {
       <div style={{ padding: '16px 12px 0', borderTop: '1px solid rgba(255,255,255,0.08)', margin: '0 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.06)', borderRadius: 10, marginBottom: 8 }}>
           <div style={{ width: 32, height: 32, background: 'var(--teal)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>
-            {(profile?.centreName || 'M').slice(0, 2).toUpperCase()}
+            {isReceptionist ? 'R' : (profile?.centreName || 'M').slice(0, 2).toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.centreName || 'My Centre'}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{profile?.city || ''}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {isReceptionist ? (userRecord?.name || 'Receptionist') : (profile?.centreName || 'My Centre')}
+            </div>
+            <div style={{ fontSize: 10, color: isReceptionist ? 'var(--teal)' : 'rgba(255,255,255,0.35)' }}>
+              {isReceptionist ? '👤 Receptionist' : (profile?.city || '')}
+            </div>
           </div>
         </div>
         <button onClick={handleLogout} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: 12, padding: '8px 12px', textAlign: 'left', borderRadius: 8, transition: 'color 0.18s', fontFamily: 'DM Sans, sans-serif' }}

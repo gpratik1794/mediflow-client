@@ -42,9 +42,29 @@ export default function PrescriptionWriter() {
   // Lab tests to order
   const [labTests, setLabTests] = useState([])  // [{name, instructions}]
 
+  // Tags
+  const [patientTags, setPatientTags]   = useState([])   // existing tags on patient
+  const [manualTags, setManualTags]     = useState([])   // manually added in this session
+  const [savedTags, setSavedTags]       = useState(null) // set after save to show confirmation
+
+  const ALL_TAGS = ['diabetes','hypert','thyroid','asthma','cardiac','ortho','peds','obesity']
+  const TAG_LABELS = { diabetes:'Diabetes', hypert:'Hypertension', thyroid:'Thyroid', asthma:'Asthma', cardiac:'Cardiac', ortho:'Ortho', peds:'Paeds', obesity:'Obesity' }
+  const TAG_COLORS = { diabetes:'#F59E0B', hypert:'#EF4444', thyroid:'#8B5CF6', asthma:'#3B82F6', cardiac:'#EC4899', ortho:'#10B981', peds:'#06B6D4', obesity:'#F97316' }
+
   const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => { loadMedicines() }, [user])
+  useEffect(() => { if (initPhone) loadPatientTags(initPhone) }, [initPhone])
+
+  async function loadPatientTags(phone) {
+    if (!phone) return
+    try {
+      const { getDocs, collection, query, where, limit } = await import('firebase/firestore')
+      const { db } = await import('../../firebase/config')
+      const snap = await getDocs(query(collection(db, 'centres', user.uid, 'patients'), where('phone','==', phone), limit(1)))
+      if (!snap.empty) setPatientTags(snap.docs[0].data().tags || [])
+    } catch (e) { console.warn('loadPatientTags:', e) }
+  }
 
   async function loadMedicines() {
     let meds = await getMedicines(user.uid)
@@ -107,12 +127,6 @@ export default function PrescriptionWriter() {
       if (apptId) await updateAppointment(user.uid, apptId, { status: 'done', prescriptionId: prescId })
       logActivity(user.uid, { action: 'prescription_created', label: 'Prescription Created', detail: `${patient?.name || ''} · ${diagnosis || 'No diagnosis'}`, by: user?.email || '' })
 
-      // Auto-tag patient based on diagnosis + medicines
-      if (patient.phone) {
-        const autoTags = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds })
-        if (autoTags.length) await updatePatientTags(user.uid, patient.phone, autoTags)
-      }
-
       // Create follow-up if specified
       if (followUpDays) {
         const followUpDate = format(addDays(new Date(), parseInt(followUpDays)), 'yyyy-MM-dd')
@@ -128,8 +142,18 @@ export default function PrescriptionWriter() {
         }
       }
 
+      // Auto-tag patient based on diagnosis + medicines + manual tags
+      if (patient.phone) {
+        const autoTags = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds })
+        const allNewTags = Array.from(new Set([...autoTags, ...manualTags]))
+        if (allNewTags.length) {
+          await updatePatientTags(user.uid, patient.phone, allNewTags)
+          setSavedTags(allNewTags)
+        }
+      }
+
       setToast({ message: 'Prescription saved!', type: 'success' })
-      setTimeout(() => navigate(`/clinic/prescription/${prescId}`), 800)
+      setTimeout(() => navigate(`/clinic/prescription/${prescId}`), 1400)
     } catch (err) {
       setToast({ message: 'Save failed. Try again.', type: 'error' })
     }
@@ -401,6 +425,68 @@ export default function PrescriptionWriter() {
                   <span style={{ fontWeight: 500, color: 'var(--navy)' }}>{v}</span>
                 </div>
               ))}
+            </div>
+          </Card>
+
+          {/* Patient Tags */}
+          <Card>
+            <CardHeader title="Patient Tags" />
+            <div style={{ padding: '14px 18px' }}>
+              {/* Existing tags on patient */}
+              {patientTags.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, marginBottom: 6 }}>EXISTING TAGS</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {patientTags.map(tag => (
+                      <span key={tag} style={{
+                        padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                        background: TAG_COLORS[tag] + '20', color: TAG_COLORS[tag] || 'var(--teal)',
+                        border: `1px solid ${TAG_COLORS[tag] || 'var(--teal)'}40`
+                      }}>{TAG_LABELS[tag] || tag}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Manual tag chips */}
+              <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, marginBottom: 6 }}>
+                {patientTags.length > 0 ? 'ADD MORE TAGS' : 'TAG THIS PATIENT'}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {ALL_TAGS.filter(t => !patientTags.includes(t)).map(tag => {
+                  const on = manualTags.includes(tag)
+                  return (
+                    <button key={tag} type="button"
+                      onClick={() => setManualTags(ts => on ? ts.filter(t => t !== tag) : [...ts, tag])}
+                      style={{
+                        padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                        border: `1.5px solid ${on ? TAG_COLORS[tag] : 'var(--border)'}`,
+                        background: on ? TAG_COLORS[tag] + '20' : 'none',
+                        color: on ? TAG_COLORS[tag] : 'var(--slate)',
+                        cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s'
+                      }}>{on ? '✓ ' : ''}{TAG_LABELS[tag] || tag}</button>
+                  )
+                })}
+              </div>
+
+              {/* Auto-tag preview */}
+              {(diagnosis || selectedMeds.length > 0) && (() => {
+                const preview = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds })
+                  .filter(t => !patientTags.includes(t))
+                if (!preview.length) return null
+                return (
+                  <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--teal-light)', borderRadius: 8, fontSize: 11, color: 'var(--teal)' }}>
+                    🏷 Will auto-tag: {preview.map(t => TAG_LABELS[t] || t).join(', ')}
+                  </div>
+                )
+              })()}
+
+              {/* Saved confirmation */}
+              {savedTags && (
+                <div style={{ marginTop: 10, padding: '8px 10px', background: '#D1FAE5', borderRadius: 8, fontSize: 11, color: '#065F46', fontWeight: 500 }}>
+                  ✓ Tags saved: {savedTags.map(t => TAG_LABELS[t] || t).join(', ')}
+                </div>
+              )}
             </div>
           </Card>
 
