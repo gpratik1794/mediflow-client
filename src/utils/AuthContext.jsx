@@ -1,4 +1,4 @@
-// src/utils/AuthContext.jsx — with subscription gate
+// src/utils/AuthContext.jsx — parallel loads, no sequential awaits
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { auth, db } from '../firebase/config'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -8,7 +8,7 @@ const AuthContext = createContext(null)
 export const useAuth = () => useContext(AuthContext)
 
 function isAccountAccessible(clientRecord) {
-  if (!clientRecord) return true // No record = old client, allow access
+  if (!clientRecord) return true
   if (clientRecord.status === 'deactivated') return false
   if (clientRecord.subscriptionEndDate) {
     const end = new Date(clientRecord.subscriptionEndDate)
@@ -18,84 +18,69 @@ function isAccountAccessible(clientRecord) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null)
-  const [profile, setProfile] = useState(null)
+  const [user, setUser]               = useState(null)
+  const [profile, setProfile]         = useState(null)
   const [clientRecord, setClientRecord] = useState(null)
-  const [blocked, setBlocked] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [role, setRole]       = useState(null)   // 'admin' | 'receptionist' | null (owner)
-  const [userRecord, setUserRecord] = useState(null) // { name, email, phone, role }
+  const [blocked, setBlocked]         = useState(false)
+  const [loading, setLoading]         = useState(true)
+  const [role, setRole]               = useState(null)
+  const [userRecord, setUserRecord]   = useState(null)
 
   useEffect(() => {
     let profileUnsub = null
+
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (profileUnsub) { profileUnsub(); profileUnsub = null }
 
-      if (firebaseUser) {
-        setUser(firebaseUser)
+      if (!firebaseUser) {
+        setUser(null); setProfile(null); setClientRecord(null)
+        setBlocked(false); setRole(null); setUserRecord(null)
+        setLoading(false)
+        return
+      }
 
-        // Load centre profile — real-time
+      setUser(firebaseUser)
+
+      // Fire both lookups in parallel — no sequential waiting
+      const [clientSnap, staffSnap] = await Promise.all([
+        getDoc(doc(db, 'clients',    firebaseUser.uid)).catch(() => null),
+        getDoc(doc(db, 'staffUsers', firebaseUser.uid)).catch(() => null),
+      ])
+
+      // Client / subscription record
+      if (clientSnap?.exists()) {
+        const record = clientSnap.data()
+        setClientRecord(record)
+        setBlocked(!isAccountAccessible(record))
+      }
+
+      // Role: staff or owner
+      if (staffSnap?.exists()) {
+        const rec = staffSnap.data()
+        setUserRecord(rec)
+        setRole(rec.role || 'receptionist')
+        if (rec.centreId) {
+          profileUnsub = onSnapshot(
+            doc(db, 'centres', rec.centreId, 'profile', 'main'),
+            snap => { if (snap.exists()) setProfile({ ...snap.data(), _centreId: rec.centreId }) },
+            e => console.warn('Staff profile listen failed', e)
+          )
+        }
+      } else {
+        setRole(null)
         profileUnsub = onSnapshot(
           doc(db, 'centres', firebaseUser.uid, 'profile', 'main'),
           snap => { if (snap.exists()) setProfile(snap.data()) },
           e => console.warn('Profile listen failed', e)
         )
-
-        // Load client subscription record
-        try {
-          const clientSnap = await getDoc(doc(db, 'clients', firebaseUser.uid))
-          if (clientSnap.exists()) {
-            const record = clientSnap.data()
-            setClientRecord(record)
-            setBlocked(!isAccountAccessible(record))
-          }
-        } catch (e) { console.warn('Client record load failed', e) }
-
-        // Load role — check if this uid exists as a sub-user under any centre
-        // Pattern: centres/{centreId}/users/{firebaseUser.uid}
-        // For owner login: no record exists → role stays null (full access)
-        // For staff login: record exists with centreId stored on it
-        try {
-          // Sub-users store their centreId on their own user record
-          // First check if there's a direct owner match (uid === centreId)
-          const ownerProfileSnap = await getDoc(doc(db, 'centres', firebaseUser.uid, 'profile', 'main'))
-          if (!ownerProfileSnap.exists()) {
-            // Not an owner — look up as sub-user
-            // Sub-user record: centres/{centreOwnerUid}/users/{firebaseUser.uid}
-            // We store centreId on the user record itself for lookup
-            const userDocSnap = await getDoc(doc(db, 'staffUsers', firebaseUser.uid))
-            if (userDocSnap.exists()) {
-              const rec = userDocSnap.data()
-              setUserRecord(rec)
-              setRole(rec.role || 'receptionist')
-              // Load the owner's centre profile instead
-              if (rec.centreId) {
-                profileUnsub = onSnapshot(
-                  doc(db, 'centres', rec.centreId, 'profile', 'main'),
-                  snap => { if (snap.exists()) setProfile({ ...snap.data(), _centreId: rec.centreId }) },
-                  e => console.warn('Staff profile listen failed', e)
-                )
-              }
-            }
-          } else {
-            setRole(null) // owner
-          }
-        } catch (e) { console.warn('Role load failed', e) }
-
-      } else {
-        setUser(null)
-        setProfile(null)
-        setClientRecord(null)
-        setBlocked(false)
-        setRole(null)
-        setUserRecord(null)
       }
+
       setLoading(false)
     })
+
     return () => { unsub(); if (profileUnsub) profileUnsub() }
   }, [])
 
-  // Show blocked screen if account deactivated/expired
   if (!loading && user && blocked) {
     return (
       <div style={{
