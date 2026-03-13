@@ -2,9 +2,9 @@
 // Creates a Firebase Auth user for a staff member (receptionist/doctor)
 // without signing out the clinic owner. Uses Firebase Admin SDK server-side.
 
-import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getAuth } from 'firebase-admin/auth'
-import { getFirestore } from 'firebase-admin/firestore'
+const { initializeApp, getApps, cert } = require('firebase-admin/app')
+const { getAuth } = require('firebase-admin/auth')
+const { getFirestore } = require('firebase-admin/firestore')
 
 function initAdmin() {
   if (getApps().length > 0) return
@@ -25,7 +25,7 @@ function initAdmin() {
   })
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Always set JSON header so errors are parseable by the frontend
   res.setHeader('Content-Type', 'application/json')
 
