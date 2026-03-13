@@ -339,6 +339,50 @@ export async function getActivityLog(centreId, limitCount = 100) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
+// ── PATIENT TAGS ─────────────────────────────────────────────────────────────
+
+export const TAG_RULES = {
+  diabetes:  { diagnoses: ['diabetes','diabetic'], medicines: ['metformin','glipizide','insulin','glimepiride'] },
+  hypert:    { diagnoses: ['hypertension','hypertensive'], medicines: ['amlodipine','atenolol','telmisartan','losartan'] },
+  thyroid:   { diagnoses: ['thyroid','hypothyroid','hyperthyroid'], medicines: ['levothyroxine','eltroxin','thyronorm'] },
+  asthma:    { diagnoses: ['asthma','bronchospasm'], medicines: ['salbutamol','budesonide','montelukast'] },
+  cardiac:   { diagnoses: ['cardiac','heart failure','angina'], medicines: ['atorvastatin','aspirin','clopidogrel'] },
+  ortho:     { diagnoses: ['ortho','arthritis','fracture','joint'] },
+  peds:      { diagnoses: ['paediatric','pediatric','child'] },
+  obesity:   { diagnoses: ['obesity','overweight'] },
+}
+
+// Derive tags from a prescription's diagnosis string + medicines list
+export function deriveTagsFromPrescription({ diagnosis = '', medicines = [] }) {
+  const diagLower = diagnosis.toLowerCase()
+  const medNames  = medicines.map(m => (m.name || '').toLowerCase()).join(' ')
+  const newTags = []
+  for (const [tag, rules] of Object.entries(TAG_RULES)) {
+    const diagMatch = (rules.diagnoses || []).some(kw => diagLower.includes(kw))
+    const medMatch  = (rules.medicines  || []).some(kw => medNames.includes(kw))
+    if (diagMatch || medMatch) newTags.push(tag)
+  }
+  return newTags
+}
+
+// Merge new tags into patient record (additive — never removes existing tags)
+export async function updatePatientTags(centreId, patientPhone, newTags) {
+  if (!patientPhone || !newTags?.length) return
+  try {
+    const ref = collection(db, 'centres', centreId, 'patients')
+    const snap = await getDocs(query(ref, where('phone', '==', patientPhone), limit(1)))
+    if (snap.empty) return
+    const patientRef = snap.docs[0].ref
+    const existing   = snap.docs[0].data().tags || []
+    const merged     = Array.from(new Set([...existing, ...newTags]))
+    if (merged.length !== existing.length) {
+      await updateDoc(patientRef, { tags: merged })
+    }
+  } catch (e) {
+    console.warn('[updatePatientTags] failed:', e)
+  }
+}
+
 // ── PATIENTS LIST ─────────────────────────────────────────────────────────────
 
 export async function getAllPatients(centreId) {

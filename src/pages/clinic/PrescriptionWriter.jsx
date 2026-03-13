@@ -3,8 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Input, Toast } from '../../components/UI'
-import { createPrescription, createFollowUp, getMedicines, saveMedicine, DOSAGE_FREQUENCY, DOSAGE_DURATION, DOSAGE_TIMING, DEFAULT_MEDICINES , logActivity } from '../../firebase/clinicDb'
-import { updateAppointment } from '../../firebase/clinicDb'
+import { createPrescription, createFollowUp, getMedicines, saveMedicine, DOSAGE_FREQUENCY, DOSAGE_DURATION, DOSAGE_TIMING, DEFAULT_MEDICINES, logActivity, updateAppointment, deriveTagsFromPrescription, updatePatientTags } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { printPrescription } from '../../utils/printPrescription'
 import { format, addDays } from 'date-fns'
@@ -107,6 +106,12 @@ export default function PrescriptionWriter() {
       // Mark appointment done
       if (apptId) await updateAppointment(user.uid, apptId, { status: 'done', prescriptionId: prescId })
       logActivity(user.uid, { action: 'prescription_created', label: 'Prescription Created', detail: `${patient?.name || ''} · ${diagnosis || 'No diagnosis'}`, by: user?.email || '' })
+
+      // Auto-tag patient based on diagnosis + medicines
+      if (patient.phone) {
+        const autoTags = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds })
+        if (autoTags.length) await updatePatientTags(user.uid, patient.phone, autoTags)
+      }
 
       // Create follow-up if specified
       if (followUpDays) {
