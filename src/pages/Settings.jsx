@@ -1345,6 +1345,14 @@ export default function Settings() {
   const [toast, setToast]   = useState(null)
   const [saving, setSaving] = useState(false)
 
+  // Staff tab state
+  const [staffList, setStaffList]       = useState([])
+  const [staffLoading, setStaffLoading] = useState(false)
+  const [newStaff, setNewStaff]         = useState({ name: '', email: '', password: '', role: 'receptionist' })
+  const [staffSaving, setStaffSaving]   = useState(false)
+  const [staffErr, setStaffErr]         = useState('')
+  const [staffSuccess, setStaffSuccess] = useState('')
+
   const [form, setForm] = useState({
     centreName:        '',
     ownerName:         '',
@@ -1407,6 +1415,60 @@ export default function Settings() {
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
   function handleSaveDoctors()             { saveFields({ doctors: form.doctors }) }
 
+  // ── Staff functions ──────────────────────────────────────────────────────
+  async function loadStaffList() {
+    if (!user?.uid) return
+    setStaffLoading(true)
+    try {
+      const { collection, query, where, getDocs } = await import('firebase/firestore')
+      const { db } = await import('../firebase/config')
+      const snap = await getDocs(query(
+        collection(db, 'staffUsers'),
+        where('centreId', '==', user.uid)
+      ))
+      setStaffList(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    } catch (e) { console.error(e) }
+    setStaffLoading(false)
+  }
+
+  async function handleCreateStaff() {
+    setStaffErr(''); setStaffSuccess('')
+    const { name, email, password, role } = newStaff
+    if (!name.trim() || !email.trim() || !password.trim())
+      return setStaffErr('Please fill in name, email and password.')
+    if (password.length < 6)
+      return setStaffErr('Password must be at least 6 characters.')
+    setStaffSaving(true)
+    try {
+      const res = await fetch('/api/create-staff-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password, role, centreId: user.uid })
+      })
+      const data = await res.json()
+      if (!res.ok) { setStaffErr(data.error || 'Failed to create account.'); setStaffSaving(false); return }
+      setStaffSuccess('Account created for ' + name + '.')
+      setNewStaff({ name: '', email: '', password: '', role: 'receptionist' })
+      loadStaffList()
+    } catch (e) { setStaffErr('Network error. Try again.') }
+    setStaffSaving(false)
+  }
+
+  async function handleDeleteStaff(staffUid, staffName) {
+    if (!window.confirm('Remove ' + staffName + ''s access? They will no longer be able to log in.')) return
+    try {
+      const res = await fetch('/api/delete-staff-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffUid, centreId: user.uid })
+      })
+      if (res.ok) {
+        setStaffList(s => s.filter(x => x.id !== staffUid))
+        setToast({ message: staffName + ' removed.', type: 'success' })
+      }
+    } catch (e) { setToast({ message: 'Failed to remove. Try again.', type: 'error' }) }
+  }
+
   // Legacy full-save kept for reference (not used in UI anymore)
   async function handleSave(e) {
     e?.preventDefault()
@@ -1431,6 +1493,7 @@ export default function Settings() {
     { key: 'clinic',   label: '🗓️ Clinic' },
     { key: 'whatsapp', label: '💬 WhatsApp' },
     { key: 'doctors',  label: '👨‍⚕️ Doctors' },
+    { key: 'staff',    label: '👤 Staff' },
     { key: 'data',     label: '📋 Data & Logs' },
   ]
   const ALL_TAB_KEYS = ALL_TAB_DEFS.map(t => t.key)
@@ -1731,6 +1794,63 @@ export default function Settings() {
             </Section>
           </div>
         )}
+
+        {/* ── STAFF TAB ── */}
+        {activeTab === 'staff' && (() => {
+          if (staffList.length === 0 && !staffLoading) loadStaffList()
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <Section title="Add Staff Account">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <Input label="Full Name" value={newStaff.name} onChange={v => setNewStaff(s => ({ ...s, name: v }))} placeholder="e.g. Priya Sharma" />
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 4 }}>Role</label>
+                      <select value={newStaff.role} onChange={e => setNewStaff(s => ({ ...s, role: e.target.value }))}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', background: 'var(--surface)', color: 'var(--navy)', outline: 'none' }}>
+                        <option value="receptionist">Receptionist</option>
+                        <option value="doctor">Doctor</option>
+                      </select>
+                    </div>
+                  </div>
+                  <Input label="Login Email" value={newStaff.email} onChange={v => setNewStaff(s => ({ ...s, email: v }))} placeholder="staff@example.com" />
+                  <Input label="Password" value={newStaff.password} onChange={v => setNewStaff(s => ({ ...s, password: v }))} placeholder="Min 6 characters" />
+                  {staffErr && <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#B91C1C' }}>{staffErr}</div>}
+                  {staffSuccess && <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#166534' }}>{staffSuccess}</div>}
+                  <Btn onClick={handleCreateStaff} disabled={staffSaving}>
+                    {staffSaving ? 'Creating…' : '+ Create Account'}
+                  </Btn>
+                </div>
+              </Section>
+
+              <Section title="Current Staff">
+                {staffLoading ? (
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>Loading…</div>
+                ) : staffList.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>No staff accounts created yet.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {staffList.map(s => (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)' }}>
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: s.role === 'doctor' ? '#EFF6FF' : '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
+                          {s.role === 'doctor' ? '👨‍⚕️' : '🧑‍💼'}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>{s.name}</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{s.email} · <span style={{ textTransform: 'capitalize' }}>{s.role}</span></div>
+                        </div>
+                        <button onClick={() => handleDeleteStaff(s.id, s.name)}
+                          style={{ background: 'none', border: '1.5px solid #FCA5A5', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#DC2626', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Section>
+            </div>
+          )
+        })()}
 
         {/* ── DATA TAB ── */}
         {activeTab === 'data' && (
