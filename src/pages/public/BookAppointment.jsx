@@ -202,6 +202,11 @@ export default function BookAppointment() {
   const [selSlot, setSelSlot]   = useState(null)
   const [slotsLoading, setSlotsLoading] = useState(false)
 
+  // Phone-first flow
+  const [phoneVerified, setPhoneVerified] = useState(false)
+  const [phoneLooking, setPhoneLooking]   = useState(false)
+  const [existingPatient, setExistingPatient] = useState(false)
+
   // Submission
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone]         = useState(false)
@@ -442,9 +447,33 @@ export default function BookAppointment() {
     return chips
   })()
 
+  // ── Phone-first: look up existing patient ──
+  async function handlePhoneLookup() {
+    if (phone.trim().length !== 10) return
+    setPhoneLooking(true)
+    try {
+      const pq = query(collection(db, 'centres', centreId, 'patients'), where('phone', '==', phone.trim()))
+      const pSnap = await getDocs(pq)
+      if (!pSnap.empty) {
+        const p = pSnap.docs[0].data()
+        if (p.name)   setName(p.name)
+        if (p.age)    setAge(String(p.age))
+        if (p.gender) setGender(p.gender)
+        if (p.dob)    setDob(p.dob)
+        setExistingPatient(true)
+      } else {
+        setExistingPatient(false)
+      }
+    } catch (e) {
+      console.warn('Patient lookup failed:', e)
+    }
+    setPhoneVerified(true)
+    setPhoneLooking(false)
+  }
+
   // ── Navigation ──
   function canProceed() {
-    if (step === 1) return name.trim().length > 0 && phone.trim().length === 10
+    if (step === 1) return phoneVerified && name.trim().length > 0 && phone.trim().length === 10
     if (step === 2) return doctors.length === 0 || selDoc !== null
     if (step === 3) {
       if (!selDate) return false
@@ -717,76 +746,123 @@ export default function BookAppointment() {
             <div style={S.cardTitle}>Your Details</div>
             <div style={S.cardSub}>We'll send your confirmation on WhatsApp</div>
             <div style={S.card}>
-              <div style={{ marginBottom: 14 }}>
-                <span style={S.label}>Full Name *</span>
-                <input style={S.input} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rajesh Sharma" />
-              </div>
 
-              {/* DOB — inline dropdowns */}
+              {/* Phone first */}
               <div style={{ marginBottom: 14 }}>
-                <span style={S.label}>Date of Birth <span style={{ color: '#8FA3B0', fontWeight: 400 }}>(optional — age auto-calculated)</span></span>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {(() => {
-                    const MONTHS_LIST = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-                    const parts = dob ? dob.split('-') : ['','','']
-                    const yr = parts[0], mo = parts[1] ? String(parseInt(parts[1])) : '', dy = parts[2] ? String(parseInt(parts[2])) : ''
-                    const maxDays = mo && yr ? new Date(parseInt(yr), parseInt(mo), 0).getDate() : 31
-                    const days = Array.from({length: maxDays}, (_,i) => i+1)
-                    const currYear = new Date().getFullYear()
-                    const years = Array.from({length: 100}, (_,i) => currYear - i)
-                    function handleDob(field, val) {
-                      const next = { yr: field==='yr' ? val : yr, mo: field==='mo' ? val : mo, dy: field==='dy' ? val : dy }
-                      if (next.yr && next.mo && next.dy) {
-                        const iso = `${next.yr}-${String(next.mo).padStart(2,'0')}-${String(next.dy).padStart(2,'0')}`
-                        setDob(iso)
-                        const calcAge = Math.floor((new Date() - new Date(iso)) / (365.25*24*60*60*1000))
-                        if (calcAge >= 0 && calcAge <= 120) setAge(String(calcAge))
-                      } else { setDob('') }
-                    }
-                    const selStyle = { ...S.input, paddingRight: 8, flex: 1, minWidth: 70 }
-                    return (<>
-                      <select style={{ ...selStyle, flex: '0 0 70px' }} value={dy} onChange={e => handleDob('dy', e.target.value)}>
-                        <option value="">Day</option>
-                        {days.map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                      <select style={{ ...selStyle, flex: '1 1 100px' }} value={mo} onChange={e => handleDob('mo', e.target.value)}>
-                        <option value="">Month</option>
-                        {MONTHS_LIST.map((m,i) => <option key={i+1} value={i+1}>{m}</option>)}
-                      </select>
-                      <select style={{ ...selStyle, flex: '0 0 85px' }} value={yr} onChange={e => handleDob('yr', e.target.value)}>
-                        <option value="">Year</option>
-                        {years.map(y => <option key={y} value={y}>{y}</option>)}
-                      </select>
-                      {age && <div style={{ padding: '9px 12px', borderRadius: 10, background: '#E6F7F5', color: '#0B9E8A', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{age}y</div>}
-                    </>)
-                  })()}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                <div style={{ flex: 1 }}>
-                  <span style={S.label}>Age <span style={{ color: '#8FA3B0', fontWeight: 400 }}>(if DOB unknown)</span></span>
-                  <input style={S.input} type="number" value={age} onChange={e => setAge(e.target.value)} placeholder="35" min="1" max="120" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <span style={S.label}>Gender</span>
-                  <select style={S.input} value={gender} onChange={e => setGender(e.target.value)}>
-                    <option value="">Select</option>
-                    <option>Male</option><option>Female</option><option>Other</option>
-                  </select>
-                </div>
-              </div>
-              <div>
                 <span style={S.label}>WhatsApp Number *</span>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 600, color: '#4A5E6D' }}>+91</span>
-                  <input style={{ ...S.input, paddingLeft: 46 }} type="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g,'').slice(0,10))} placeholder="10-digit number" maxLength={10} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 600, color: '#4A5E6D' }}>+91</span>
+                    <input
+                      style={{ ...S.input, paddingLeft: 46 }}
+                      type="tel" inputMode="numeric"
+                      value={phone}
+                      onChange={e => {
+                        setPhone(e.target.value.replace(/\D/g,'').slice(0,10))
+                        setPhoneVerified(false)
+                        setExistingPatient(false)
+                      }}
+                      placeholder="10-digit number"
+                      maxLength={10}
+                      onKeyDown={e => { if (e.key === 'Enter' && phone.trim().length === 10) handlePhoneLookup() }}
+                    />
+                  </div>
+                  <button
+                    style={{
+                      padding: '11px 16px', borderRadius: 10, border: 'none', cursor: phone.trim().length === 10 ? 'pointer' : 'not-allowed',
+                      background: phone.trim().length === 10 ? '#0B9E8A' : '#DDE6EA',
+                      color: phone.trim().length === 10 ? 'white' : '#8FA3B0',
+                      fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif",
+                      whiteSpace: 'nowrap', flexShrink: 0, transition: 'all .15s'
+                    }}
+                    onClick={handlePhoneLookup}
+                    disabled={phone.trim().length !== 10 || phoneLooking}
+                  >
+                    {phoneLooking ? '…' : phoneVerified ? '✓' : 'Verify →'}
+                  </button>
                 </div>
+                {phoneVerified && existingPatient && (
+                  <div style={{ marginTop: 8, background: '#E6F7F5', border: '1px solid #B2DDD9', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#087A6B' }}>
+                    ✓ Welcome back! Your details have been filled in.
+                  </div>
+                )}
               </div>
+
+              {/* Rest of form — shown after phone verified */}
+              {phoneVerified && (
+                <>
+                  <div style={{ marginBottom: 14 }}>
+                    <span style={S.label}>Full Name *</span>
+                    <input style={S.input} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rajesh Sharma" />
+                  </div>
+
+                  {/* DOB — inline dropdowns */}
+                  <div style={{ marginBottom: 14 }}>
+                    <span style={S.label}>Date of Birth <span style={{ color: '#8FA3B0', fontWeight: 400 }}>(optional — age auto-calculated)</span></span>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {(() => {
+                        const MONTHS_LIST = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                        const parts = dob ? dob.split('-') : ['','','']
+                        const yr = parts[0], mo = parts[1] ? String(parseInt(parts[1])) : '', dy = parts[2] ? String(parseInt(parts[2])) : ''
+                        const maxDays = mo && yr ? new Date(parseInt(yr), parseInt(mo), 0).getDate() : 31
+                        const days = Array.from({length: maxDays}, (_,i) => i+1)
+                        const currYear = new Date().getFullYear()
+                        const years = Array.from({length: 100}, (_,i) => currYear - i)
+                        function handleDob(field, val) {
+                          const next = { yr: field==='yr' ? val : yr, mo: field==='mo' ? val : mo, dy: field==='dy' ? val : dy }
+                          if (next.yr && next.mo && next.dy) {
+                            const iso = `${next.yr}-${String(next.mo).padStart(2,'0')}-${String(next.dy).padStart(2,'0')}`
+                            setDob(iso)
+                            const calcAge = Math.floor((new Date() - new Date(iso)) / (365.25*24*60*60*1000))
+                            if (calcAge >= 0 && calcAge <= 120) setAge(String(calcAge))
+                          } else { setDob('') }
+                        }
+                        const selStyle = { ...S.input, paddingRight: 8, flex: 1, minWidth: 70 }
+                        return (<>
+                          <select style={{ ...selStyle, flex: '0 0 70px' }} value={dy} onChange={e => handleDob('dy', e.target.value)}>
+                            <option value="">Day</option>
+                            {days.map(d => <option key={d} value={String(d)}>{d}</option>)}
+                          </select>
+                          <select style={{ ...selStyle, flex: '1 1 100px' }} value={mo} onChange={e => handleDob('mo', e.target.value)}>
+                            <option value="">Month</option>
+                            {MONTHS_LIST.map((m,i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
+                          </select>
+                          <select style={{ ...selStyle, flex: '0 0 85px' }} value={yr} onChange={e => handleDob('yr', e.target.value)}>
+                            <option value="">Year</option>
+                            {years.map(y => <option key={y} value={String(y)}>{y}</option>)}
+                          </select>
+                          {age && <div style={{ padding: '9px 12px', borderRadius: 10, background: '#E6F7F5', color: '#0B9E8A', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{age}y</div>}
+                        </>)
+                      })()}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={S.label}>Age <span style={{ color: '#8FA3B0', fontWeight: 400 }}>(if DOB unknown)</span></span>
+                      <input style={S.input} type="text" inputMode="numeric" value={age} onChange={e => setAge(e.target.value.replace(/\D/g,''))} placeholder="35" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={S.label}>Gender</span>
+                      <select style={S.input} value={gender} onChange={e => setGender(e.target.value)}>
+                        <option value="">Select</option>
+                        <option>Male</option><option>Female</option><option>Other</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
             </div>
-            <div style={S.note}>📱 Appointment confirmation will be sent to this WhatsApp number</div>
-            <button style={S.btnPrimary} onClick={goNext} disabled={!canProceed()}>
-              Continue →
+            {phoneVerified && (
+              <div style={S.note}>📱 Appointment confirmation will be sent to this WhatsApp number</div>
+            )}
+            <button
+              style={{ ...S.btnPrimary, opacity: canProceed() ? 1 : 0.5 }}
+              onClick={!phoneVerified ? handlePhoneLookup : goNext}
+              disabled={phone.trim().length !== 10 || (phoneVerified && !canProceed())}
+            >
+              {!phoneVerified ? 'Verify Number →' : 'Continue →'}
             </button>
           </div>
         )}

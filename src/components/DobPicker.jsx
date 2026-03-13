@@ -79,7 +79,7 @@ export default function DobPicker({ value, onChange, required = false }) {
         <label style={labelStyle}>Day</label>
         <select value={day} onChange={e => handle('day', e.target.value)} style={selectStyle}>
           <option value="">DD</option>
-          {days.map(d => <option key={d} value={d}>{d}</option>)}
+          {days.map(d => <option key={d} value={String(d)}>{d}</option>)}
         </select>
       </div>
 
@@ -88,7 +88,7 @@ export default function DobPicker({ value, onChange, required = false }) {
         <label style={labelStyle}>Month</label>
         <select value={month} onChange={e => handle('month', e.target.value)} style={selectStyle}>
           <option value="">Month</option>
-          {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+          {MONTHS.map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
         </select>
       </div>
 
@@ -97,7 +97,7 @@ export default function DobPicker({ value, onChange, required = false }) {
         <label style={labelStyle}>Year</label>
         <select value={year} onChange={e => handle('year', e.target.value)} style={selectStyle}>
           <option value="">YYYY</option>
-          {years.map(y => <option key={y} value={y}>{y}</option>)}
+          {years.map(y => <option key={y} value={String(y)}>{y}</option>)}
         </select>
       </div>
 
