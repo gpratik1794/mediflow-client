@@ -2,7 +2,7 @@
 // Reusable Day/Month/Year dropdown — replaces native date picker everywhere
 // Usage: <DobPicker value={form.dob} onChange={(dob, age) => setForm(f => ({...f, dob, age}))} />
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 
 const MONTHS = [
   'January','February','March','April','May','June',
@@ -11,11 +11,11 @@ const MONTHS = [
 
 function daysInMonth(month, year) {
   if (!month) return 31
-  return new Date(year || 2000, month, 0).getDate()
+  return new Date(year || 2000, parseInt(month), 0).getDate()
 }
 
 function calcAge(day, month, year) {
-  if (!day || !month || !year || year.length < 4) return ''
+  if (!day || !month || !year || String(year).length < 4) return ''
   const dob = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
   const today = new Date()
   if (dob > today) return ''
@@ -26,15 +26,18 @@ function calcAge(day, month, year) {
 }
 
 function parseDob(isoStr) {
-  // "1990-05-15" → { day: '15', month: '5', year: '1990' }
   if (!isoStr) return { day: '', month: '', year: '' }
   const parts = isoStr.split('-')
   if (parts.length !== 3) return { day: '', month: '', year: '' }
-  return { year: parts[0], month: String(parseInt(parts[1])), day: String(parseInt(parts[2])) }
+  return {
+    year:  parts[0],
+    month: String(parseInt(parts[1])),
+    day:   String(parseInt(parts[2]))
+  }
 }
 
 function toIso(day, month, year) {
-  if (!day || !month || !year || year.length < 4) return ''
+  if (!day || !month || !year || String(year).length < 4) return ''
   return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
 }
 
@@ -53,20 +56,35 @@ const labelStyle = {
 }
 
 export default function DobPicker({ value, onChange, required = false }) {
-  const { day, month, year } = parseDob(value)
+  const parsed = parseDob(value)
+  const [day,   setDay]   = useState(parsed.day)
+  const [month, setMonth] = useState(parsed.month)
+  const [year,  setYear]  = useState(parsed.year)
+
+  // Sync inward only when value changes from outside (e.g. pre-fill from patient lookup)
+  useEffect(() => {
+    const p = parseDob(value)
+    setDay(p.day)
+    setMonth(p.month)
+    setYear(p.year)
+  }, [value])
 
   function handle(field, val) {
     const next = {
-      day: field === 'day' ? val : day,
+      day:   field === 'day'   ? val : day,
       month: field === 'month' ? val : month,
-      year: field === 'year' ? val : year,
+      year:  field === 'year'  ? val : year,
     }
+    if (field === 'day')   setDay(val)
+    if (field === 'month') setMonth(val)
+    if (field === 'year')  setYear(val)
+
     const iso = toIso(next.day, next.month, next.year)
     const age = calcAge(next.day, next.month, next.year)
     onChange(iso, age)
   }
 
-  const maxDay = daysInMonth(parseInt(month), parseInt(year))
+  const maxDay = daysInMonth(month, year)
   const days   = Array.from({ length: maxDay }, (_, i) => i + 1)
   const currentYear = new Date().getFullYear()
   const years  = Array.from({ length: 120 }, (_, i) => currentYear - i)
@@ -74,7 +92,6 @@ export default function DobPicker({ value, onChange, required = false }) {
 
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-      {/* Day */}
       <div style={{ flex: '0 0 80px' }}>
         <label style={labelStyle}>Day</label>
         <select value={day} onChange={e => handle('day', e.target.value)} style={selectStyle}>
@@ -83,7 +100,6 @@ export default function DobPicker({ value, onChange, required = false }) {
         </select>
       </div>
 
-      {/* Month */}
       <div style={{ flex: '1 1 120px' }}>
         <label style={labelStyle}>Month</label>
         <select value={month} onChange={e => handle('month', e.target.value)} style={selectStyle}>
@@ -92,7 +108,6 @@ export default function DobPicker({ value, onChange, required = false }) {
         </select>
       </div>
 
-      {/* Year */}
       <div style={{ flex: '0 0 90px' }}>
         <label style={labelStyle}>Year</label>
         <select value={year} onChange={e => handle('year', e.target.value)} style={selectStyle}>
@@ -101,7 +116,6 @@ export default function DobPicker({ value, onChange, required = false }) {
         </select>
       </div>
 
-      {/* Age badge — auto calculated */}
       {age && (
         <div style={{
           padding: '9px 14px', borderRadius: 10, background: 'var(--teal-light)',

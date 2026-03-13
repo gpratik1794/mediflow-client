@@ -744,7 +744,7 @@ export default function BookAppointment() {
         {!done && step === 1 && (
           <div>
             <div style={S.cardTitle}>Your Details</div>
-            <div style={S.cardSub}>We'll send your confirmation on WhatsApp</div>
+            <div style={S.cardSub}>Enter your number to check for existing records</div>
             <div style={S.card}>
 
               {/* Phone first */}
@@ -769,16 +769,17 @@ export default function BookAppointment() {
                   </div>
                   <button
                     style={{
-                      padding: '11px 16px', borderRadius: 10, border: 'none', cursor: phone.trim().length === 10 ? 'pointer' : 'not-allowed',
-                      background: phone.trim().length === 10 ? '#0B9E8A' : '#DDE6EA',
-                      color: phone.trim().length === 10 ? 'white' : '#8FA3B0',
-                      fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif",
+                      padding: '11px 14px', borderRadius: 10, border: '1.5px solid #DDE6EA',
+                      cursor: phone.trim().length === 10 ? 'pointer' : 'not-allowed',
+                      background: 'var(--surface, #F4F7F9)',
+                      color: phone.trim().length === 10 ? '#4A5E6D' : '#C0CDD5',
+                      fontSize: 13, fontWeight: 500, fontFamily: "'DM Sans',sans-serif",
                       whiteSpace: 'nowrap', flexShrink: 0, transition: 'all .15s'
                     }}
                     onClick={handlePhoneLookup}
                     disabled={phone.trim().length !== 10 || phoneLooking}
                   >
-                    {phoneLooking ? '…' : phoneVerified ? '✓' : 'Verify →'}
+                    {phoneLooking ? '…' : phoneVerified ? '✓ Done' : 'Next →'}
                   </button>
                 </div>
                 {phoneVerified && existingPatient && (
@@ -862,7 +863,7 @@ export default function BookAppointment() {
               onClick={!phoneVerified ? handlePhoneLookup : goNext}
               disabled={phone.trim().length !== 10 || (phoneVerified && !canProceed())}
             >
-              {!phoneVerified ? 'Verify Number →' : 'Continue →'}
+              {!phoneVerified ? 'Continue →' : 'Continue →'}
             </button>
           </div>
         )}
