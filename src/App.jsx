@@ -47,8 +47,12 @@ function PublicOnly({ children }) {
 // Smart root redirect — clinic users go to /clinic, diagnostic to /
 function RootRedirect() {
   const { profile, loading } = useAuth()
-  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>Loading…</div>
-  if (profile?.centreType === 'clinic') return <Navigate to="/clinic" replace />
+  // Wait for BOTH loading AND profile before deciding route
+  if (loading || !profile) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'DM Sans, sans-serif', color: '#8FA3AE' }}>Loading…</div>
+  )
+  const centreType = profile?.centreType || 'diagnostic'
+  if (centreType === 'clinic' || centreType === 'both') return <Navigate to="/clinic" replace />
   return <Dashboard />
 }
 
