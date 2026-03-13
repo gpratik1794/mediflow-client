@@ -12,7 +12,9 @@ function isAccountAccessible(clientRecord) {
   if (clientRecord.status === 'deactivated') return false
   if (clientRecord.subscriptionEndDate) {
     const end = new Date(clientRecord.subscriptionEndDate)
-    if (new Date() > end && !clientRecord.paid) return false
+    // Block if subscription end date has passed — regardless of paid status
+    // Data is preserved; client can renew and regain access immediately
+    if (new Date() > end) return false
   }
   return true
 }
@@ -55,27 +57,37 @@ export function AuthProvider({ children }) {
       }
 
       // Role: staff or owner
+      // setLoading(false) is called INSIDE the first snapshot callback
+      // so profile is guaranteed to be set before the app renders
       if (staffSnap?.exists()) {
         const rec = staffSnap.data()
         setUserRecord(rec)
         setRole(rec.role || 'receptionist')
         if (rec.centreId) {
+          let firstSnap = true
           profileUnsub = onSnapshot(
             doc(db, 'centres', rec.centreId, 'profile', 'main'),
-            snap => { if (snap.exists()) setProfile({ ...snap.data(), _centreId: rec.centreId }) },
-            e => console.warn('Staff profile listen failed', e)
+            snap => {
+              if (snap.exists()) setProfile({ ...snap.data(), _centreId: rec.centreId })
+              if (firstSnap) { firstSnap = false; setLoading(false) }
+            },
+            e => { console.warn('Staff profile listen failed', e); setLoading(false) }
           )
+        } else {
+          setLoading(false)
         }
       } else {
         setRole(null)
+        let firstSnap = true
         profileUnsub = onSnapshot(
           doc(db, 'centres', firebaseUser.uid, 'profile', 'main'),
-          snap => { if (snap.exists()) setProfile(snap.data()) },
-          e => console.warn('Profile listen failed', e)
+          snap => {
+            if (snap.exists()) setProfile(snap.data())
+            if (firstSnap) { firstSnap = false; setLoading(false) }
+          },
+          e => { console.warn('Profile listen failed', e); setLoading(false) }
         )
       }
-
-      setLoading(false)
     })
 
     return () => { unsub(); if (profileUnsub) profileUnsub() }
@@ -119,8 +131,11 @@ export function AuthProvider({ children }) {
     )
   }
 
+  // maxStaff: how many total accounts allowed (including admin). Default 1 = admin only.
+  const maxStaff = clientRecord?.maxStaff || 1
+
   return (
-    <AuthContext.Provider value={{ user, profile, clientRecord, loading, role, userRecord }}>
+    <AuthContext.Provider value={{ user, profile, clientRecord, loading, role, userRecord, maxStaff }}>
       {children}
     </AuthContext.Provider>
   )

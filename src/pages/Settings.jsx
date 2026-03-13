@@ -1341,7 +1341,7 @@ function PatientExport({ centreId, ownerEmail, centreName, user }) {
 }
 
 export default function Settings() {
-  const { user, profile } = useAuth()
+  const { user, profile, maxStaff } = useAuth()
   const [toast, setToast]   = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -1390,7 +1390,7 @@ export default function Settings() {
     }
   }, [profile])
 
-  const setF = k => v => setForm(f => ({ ...f, [k]: v }))
+  const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
   async function saveFields(fields) {
     setSaving(true)
@@ -1438,9 +1438,19 @@ export default function Settings() {
       return setStaffErr('Please fill in name, email and password.')
     if (password.length < 6)
       return setStaffErr('Password must be at least 6 characters.')
+    // Check staff limit — staffList includes existing staff (not the admin owner)
+    // maxStaff = total accounts including admin, so max staff = maxStaff - 1
+    const allowedStaff = (maxStaff || 1) - 1
+    if (staffList.length >= allowedStaff) {
+      return setStaffErr(
+        allowedStaff === 0
+          ? 'Your plan does not allow staff accounts. Please contact Synergy Consultant to upgrade.'
+          : `Staff limit reached. Your plan allows ${allowedStaff} staff account${allowedStaff > 1 ? 's' : ''}. Contact Synergy Consultant to increase the limit.`
+      )
+    }
     setStaffSaving(true)
     try {
-      const res = await fetch('/api/create-staff-user.mjs', {
+      const res = await fetch('/api/create-staff-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, role, centreId: user.uid })
@@ -1450,14 +1460,14 @@ export default function Settings() {
       setStaffSuccess('Account created for ' + name + '.')
       setNewStaff({ name: '', email: '', password: '', role: 'receptionist' })
       loadStaffList()
-    } catch (e) { setStaffErr('Error: ' + (e?.message || 'Network error. Try again.')) }
+    } catch (e) { setStaffErr('Network error. Try again.') }
     setStaffSaving(false)
   }
 
   async function handleDeleteStaff(staffUid, staffName) {
     if (!window.confirm('Remove ' + staffName + ' access? They will no longer be able to log in.')) return
     try {
-      const res = await fetch('/api/delete-staff-user.mjs', {
+      const res = await fetch('/api/delete-staff-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffUid, centreId: user.uid })
@@ -1800,6 +1810,31 @@ export default function Settings() {
           if (staffList.length === 0 && !staffLoading) loadStaffList()
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Staff limit info banner */}
+              {(() => {
+                const allowed = (maxStaff || 1) - 1
+                const used = staffList.length
+                const remaining = allowed - used
+                return (
+                  <div style={{
+                    background: remaining <= 0 ? '#FEF6E7' : '#E6F7F5',
+                    border: `1px solid ${remaining <= 0 ? '#F5A623' : '#0B9E8A'}`,
+                    borderRadius: 10, padding: '12px 16px', fontSize: 13,
+                    color: remaining <= 0 ? '#92400E' : '#0B6B5E',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}>
+                    <span>
+                      {remaining <= 0
+                        ? `⚠️ Staff limit reached — ${used}/${allowed} accounts used`
+                        : `👤 Staff accounts: ${used} used of ${allowed} allowed`}
+                    </span>
+                    {remaining <= 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 600 }}>Contact Synergy Consultant to upgrade</span>
+                    )}
+                  </div>
+                )
+              })()}
+
               <Section title="Add Staff Account">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', gap: 12 }}>
@@ -1814,7 +1849,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <Input label="Login Email" value={newStaff.email} onChange={v => setNewStaff(s => ({ ...s, email: v }))} placeholder="staff@example.com" />
-                  <Input label="Password" type="password" value={newStaff.password} onChange={v => setNewStaff(s => ({ ...s, password: v }))} placeholder="Min 6 characters" />
+                  <Input label="Password" value={newStaff.password} onChange={v => setNewStaff(s => ({ ...s, password: v }))} placeholder="Min 6 characters" />
                   {staffErr && <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#B91C1C' }}>{staffErr}</div>}
                   {staffSuccess && <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#166534' }}>{staffSuccess}</div>}
                   <Btn onClick={handleCreateStaff} disabled={staffSaving}>
