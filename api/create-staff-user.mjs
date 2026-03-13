@@ -1,20 +1,13 @@
-// api/create-staff-user.js
-// Creates a Firebase Auth user for a staff member (receptionist/doctor)
-// without signing out the clinic owner. Uses Firebase Admin SDK server-side.
-
-const { initializeApp, getApps, cert } = require('firebase-admin/app')
-const { getAuth } = require('firebase-admin/auth')
-const { getFirestore } = require('firebase-admin/firestore')
+// api/create-staff-user.mjs
+import { initializeApp, getApps, cert } from 'firebase-admin/app'
+import { getAuth } from 'firebase-admin/auth'
+import { getFirestore } from 'firebase-admin/firestore'
 
 function initAdmin() {
   if (getApps().length > 0) return
   const privateKey = process.env.FIREBASE_PRIVATE_KEY
     ?.replace(/\\n/g, '\n')
-    ?.replace(/^"|"$/g, '') // strip surrounding quotes if Vercel added them
-
-  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.VITE_FIREBASE_PROJECT_ID) {
-    throw new Error('Missing Firebase Admin env vars: FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL, or VITE_FIREBASE_PROJECT_ID')
-  }
+    ?.replace(/^"|"$/g, '')
 
   initializeApp({
     credential: cert({
@@ -25,8 +18,7 @@ function initAdmin() {
   })
 }
 
-module.exports = async function handler(req, res) {
-  // Always set JSON header so errors are parseable by the frontend
+export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -44,19 +36,10 @@ module.exports = async function handler(req, res) {
     const adminAuth = getAuth()
     const adminDb   = getFirestore()
 
-    // Create Firebase Auth user
-    const userRecord = await adminAuth.createUser({
-      email,
-      password,
-      displayName: name,
-    })
+    const userRecord = await adminAuth.createUser({ email, password, displayName: name })
 
-    // Write staffUsers doc so AuthContext can detect them as staff
     await adminDb.collection('staffUsers').doc(userRecord.uid).set({
-      name,
-      email,
-      role,
-      centreId,
+      name, email, role, centreId,
       createdAt: new Date().toISOString(),
     })
 

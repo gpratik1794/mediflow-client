@@ -1,7 +1,7 @@
-// api/delete-staff-user.js
-const { initializeApp, getApps, cert } = require('firebase-admin/app')
-const { getAuth } = require('firebase-admin/auth')
-const { getFirestore } = require('firebase-admin/firestore')
+// api/delete-staff-user.mjs
+import { initializeApp, getApps, cert } from 'firebase-admin/app'
+import { getAuth } from 'firebase-admin/auth'
+import { getFirestore } from 'firebase-admin/firestore'
 
 function initAdmin() {
   if (getApps().length > 0) return
@@ -18,7 +18,7 @@ function initAdmin() {
   })
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -33,15 +33,11 @@ module.exports = async function handler(req, res) {
     const adminAuth = getAuth()
     const adminDb   = getFirestore()
 
-    // Verify the staff member belongs to this centre before deleting
     const staffDoc = await adminDb.collection('staffUsers').doc(staffUid).get()
     if (!staffDoc.exists || staffDoc.data().centreId !== centreId)
       return res.status(403).json({ error: 'Not authorised to delete this staff member' })
 
-    // Delete from Firebase Auth
     await adminAuth.deleteUser(staffUid)
-
-    // Delete staffUsers doc
     await adminDb.collection('staffUsers').doc(staffUid).delete()
 
     return res.status(200).json({ ok: true })

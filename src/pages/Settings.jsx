@@ -1440,7 +1440,7 @@ export default function Settings() {
       return setStaffErr('Password must be at least 6 characters.')
     setStaffSaving(true)
     try {
-      const res = await fetch('/api/create-staff-user', {
+      const res = await fetch('/api/create-staff-user.mjs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, role, centreId: user.uid })
@@ -1457,7 +1457,7 @@ export default function Settings() {
   async function handleDeleteStaff(staffUid, staffName) {
     if (!window.confirm('Remove ' + staffName + ' access? They will no longer be able to log in.')) return
     try {
-      const res = await fetch('/api/delete-staff-user', {
+      const res = await fetch('/api/delete-staff-user.mjs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffUid, centreId: user.uid })
