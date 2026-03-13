@@ -7,6 +7,8 @@ import { createPrescription, createFollowUp, getMedicines, saveMedicine, DOSAGE_
 import { sendCampaign } from '../../firebase/whatsapp'
 import { printPrescription } from '../../utils/printPrescription'
 import { format, addDays } from 'date-fns'
+import { collection, query, where, getDocs, limit } from 'firebase/firestore'
+import { db } from '../../firebase/config'
 
 export default function PrescriptionWriter() {
   const { user, profile } = useAuth()
@@ -59,9 +61,11 @@ export default function PrescriptionWriter() {
   async function loadPatientTags(phone) {
     if (!phone) return
     try {
-      const { getDocs, collection, query, where, limit } = await import('firebase/firestore')
-      const { db } = await import('../../firebase/config')
-      const snap = await getDocs(query(collection(db, 'centres', user.uid, 'patients'), where('phone','==', phone), limit(1)))
+      const snap = await getDocs(query(
+        collection(db, 'centres', user.uid, 'patients'),
+        where('phone', '==', phone),
+        limit(1)
+      ))
       if (!snap.empty) setPatientTags(snap.docs[0].data().tags || [])
     } catch (e) { console.warn('loadPatientTags:', e) }
   }

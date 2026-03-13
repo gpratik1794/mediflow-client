@@ -6,6 +6,7 @@ import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Empty } from '../../components/UI'
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase/config'
+import { sendCampaign } from '../../firebase/whatsapp'
 
 const TAG_LABELS = { diabetes:'Diabetes', hypert:'Hypertension', thyroid:'Thyroid', asthma:'Asthma', cardiac:'Cardiac', ortho:'Ortho', peds:'Paeds', obesity:'Obesity' }
 const TAG_COLORS = { diabetes:'#F59E0B', hypert:'#EF4444', thyroid:'#8B5CF6', asthma:'#3B82F6', cardiac:'#EC4899', ortho:'#10B981', peds:'#06B6D4', obesity:'#F97316' }
@@ -75,28 +76,21 @@ export default function ClinicPatients() {
   async function handleBulkWA() {
     if (!waMessage.trim() || selected.size === 0) return
     setWaSending(true)
-    const apiKey = profile?.aisynergyApiKey
-    const API_URL = 'https://backend.api-wa.co/campaign/aisynergy/api/v2'
+    const campaigns = profile?.whatsappCampaigns || []
     let sent = 0
     const selectedPatients = tagFiltered.filter(p => selected.has(p.id))
     for (const p of selectedPatients) {
       if (!p.phone) continue
       try {
-        await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey,
-            campaignName: 'marketing_campaign',
-            destination: ('91' + p.phone).replace(/\D/g,''),
-            userName: profile?.centreName || 'MEDIFLOW',
-            templateParams: [p.name, waMessage],
-            source: 'mediflow',
-            media: {}, attributes: {},
-            paramsFallbackValue: { FirstName: p.name }
-          })
-        })
-        sent++
+        const result = await sendCampaign(
+          campaigns,
+          'marketing_campaign',
+          p.phone,
+          [p.name, waMessage],
+          null,
+          { centreId: user.uid, patientName: p.name }
+        )
+        if (result.ok) sent++
       } catch (e) { console.warn('WA send failed for', p.phone) }
     }
     setWaSending(false)
@@ -300,7 +294,7 @@ export default function ClinicPatients() {
               />
             </div>
             <div style={{ background: '#FFF7ED', border: '1px solid #FDDCBC', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#9A3412', marginBottom: 18 }}>
-              ⚠ Only approved AiSynergy templates will deliver. Ensure <strong>marketing_campaign</strong> template is approved.
+              ⚠ Requires <strong>marketing_campaign</strong> template configured in Settings → WhatsApp Campaigns, and approved by AiSynergy.
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowWAModal(false)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)' }}>Cancel</button>
@@ -311,107 +305,6 @@ export default function ClinicPatients() {
           </div>
         </div>
       )}
-    </Layout>
-  )
-}
-
-function maskPhone(phone) {
-  if (!phone) return ''
-  const p = String(phone).replace(/[^0-9]/g,'')
-  if (p.length < 6) return '••••••'
-  return p.slice(0, 2) + '••••••' + p.slice(-2)
-}
-
-export default function ClinicPatients() {
-  const { user } = useAuth()
-  const navigate = useNavigate()
-  const [patients, setPatients] = useState([])
-  const [search, setSearch]     = useState('')
-  const [loading, setLoading]   = useState(true)
-
-  useEffect(() => { loadPatients() }, [user])
-
-  async function loadPatients() {
-    setLoading(true)
-    try {
-      const q = query(
-        collection(db, 'centres', user.uid, 'patients'),
-        orderBy('name', 'asc')
-      )
-      const snap = await getDocs(q)
-      setPatients(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }
-
-  const filtered = patients.filter(p =>
-    p.name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.phone?.includes(search)
-  )
-
-  return (
-    <Layout title="Patients"
-      action={<Btn onClick={() => navigate('/clinic/appointments/new')}>+ New Appointment</Btn>}
-    >
-      {/* Search */}
-      <div style={{ marginBottom: 20 }}>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name or phone…"
-          style={{
-            width: '100%', maxWidth: 400, padding: '10px 16px', borderRadius: 10,
-            border: '1.5px solid var(--border)', fontSize: 13,
-            fontFamily: 'DM Sans, sans-serif', outline: 'none', boxSizing: 'border-box',
-            background: 'var(--surface)'
-          }}
-        />
-      </div>
-
-      <Card>
-        <CardHeader title={`All Patients (${filtered.length})`} />
-        {loading ? (
-          <Empty icon="⏳" message="Loading patients…" />
-        ) : filtered.length === 0 ? (
-          <Empty icon="👥" message={search ? 'No patients match your search' : 'No patients yet. Book the first appointment!'} />
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg)' }}>
-                {['Name', 'Phone', 'Age / Gender', 'Last Visit', ''].map(h => (
-                  <th key={h} style={{
-                    textAlign: 'left', padding: '10px 18px', fontSize: 11,
-                    textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--muted)',
-                    fontWeight: 500, borderBottom: '1px solid var(--border)'
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id}
-                  style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                  onClick={() => navigate(`/patients/${p.id}`)}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-light)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <td style={{ padding: '13px 18px' }}>
-                    <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--navy)' }}>{p.name}</div>
-                  </td>
-                  <td style={{ padding: '13px 18px', fontSize: 13, color: 'var(--slate)' }}>{maskPhone(p.phone)}</td>
-                  <td style={{ padding: '13px 18px', fontSize: 13, color: 'var(--slate)' }}>
-                    {p.age ? `${p.age}y` : '—'} {p.gender ? `· ${p.gender}` : ''}
-                  </td>
-                  <td style={{ padding: '13px 18px', fontSize: 12, color: 'var(--muted)' }}>
-                    {p.lastVisit || '—'}
-                  </td>
-                  <td style={{ padding: '13px 18px', color: 'var(--teal)', fontSize: 18 }}>›</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
     </Layout>
   )
 }
