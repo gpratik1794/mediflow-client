@@ -1455,7 +1455,7 @@ export default function Settings() {
   }
 
   async function handleDeleteStaff(staffUid, staffName) {
-    if (!window.confirm('Remove ' + staffName + ''s access? They will no longer be able to log in.')) return
+    if (!window.confirm('Remove ' + staffName + ' access? They will no longer be able to log in.')) return
     try {
       const res = await fetch('/api/delete-staff-user', {
         method: 'POST',
