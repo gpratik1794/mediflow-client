@@ -30,7 +30,7 @@ export function Input({ label, type='text', value, onChange, placeholder, requir
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       {label && <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, letterSpacing: 0.3 }}>{label}{required && ' *'}</label>}
-      <input type={type} value={value} onChange={onChange} placeholder={placeholder} required={required}
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} required={required}
         style={{
           border: '1.5px solid var(--border)', borderRadius: 8, padding: '9px 12px',
           fontSize: 13, color: 'var(--navy)', outline: 'none', width: '100%',

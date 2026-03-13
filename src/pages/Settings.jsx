@@ -1390,7 +1390,7 @@ export default function Settings() {
     }
   }, [profile])
 
-  const setF = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+  const setF = k => v => setForm(f => ({ ...f, [k]: v }))
 
   async function saveFields(fields) {
     setSaving(true)
