@@ -1450,7 +1450,7 @@ export default function Settings() {
       setStaffSuccess('Account created for ' + name + '.')
       setNewStaff({ name: '', email: '', password: '', role: 'receptionist' })
       loadStaffList()
-    } catch (e) { setStaffErr('Network error. Try again.') }
+    } catch (e) { setStaffErr('Error: ' + (e?.message || 'Network error. Try again.')) }
     setStaffSaving(false)
   }
 
@@ -1814,7 +1814,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <Input label="Login Email" value={newStaff.email} onChange={v => setNewStaff(s => ({ ...s, email: v }))} placeholder="staff@example.com" />
-                  <Input label="Password" value={newStaff.password} onChange={v => setNewStaff(s => ({ ...s, password: v }))} placeholder="Min 6 characters" />
+                  <Input label="Password" type="password" value={newStaff.password} onChange={v => setNewStaff(s => ({ ...s, password: v }))} placeholder="Min 6 characters" />
                   {staffErr && <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#B91C1C' }}>{staffErr}</div>}
                   {staffSuccess && <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#166534' }}>{staffSuccess}</div>}
                   <Btn onClick={handleCreateStaff} disabled={staffSaving}>
