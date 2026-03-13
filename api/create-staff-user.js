@@ -8,19 +8,30 @@ import { getFirestore } from 'firebase-admin/firestore'
 
 function initAdmin() {
   if (getApps().length > 0) return
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY
+    ?.replace(/\\n/g, '\n')
+    ?.replace(/^"|"$/g, '') // strip surrounding quotes if Vercel added them
+
+  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.VITE_FIREBASE_PROJECT_ID) {
+    throw new Error('Missing Firebase Admin env vars: FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL, or VITE_FIREBASE_PROJECT_ID')
+  }
+
   initializeApp({
     credential: cert({
       projectId:   process.env.VITE_FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey:  process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      privateKey,
     })
   })
 }
 
 export default async function handler(req, res) {
+  // Always set JSON header so errors are parseable by the frontend
+  res.setHeader('Content-Type', 'application/json')
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { name, email, password, role, centreId } = req.body
+  const { name, email, password, role, centreId } = req.body || {}
 
   if (!name || !email || !password || !role || !centreId)
     return res.status(400).json({ error: 'Missing required fields' })

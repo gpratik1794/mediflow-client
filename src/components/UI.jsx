@@ -49,7 +49,7 @@ export function Select({ label, value, onChange, options, required, style }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       {label && <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 500, letterSpacing: 0.3 }}>{label}{required && ' *'}</label>}
-      <select value={value} onChange={onChange} required={required}
+      <select value={value} onChange={e => onChange(e.target.value)} required={required}
         style={{
           border: '1.5px solid var(--border)', borderRadius: 8, padding: '9px 12px',
           fontSize: 13, color: value ? 'var(--navy)' : 'var(--muted)', outline: 'none',

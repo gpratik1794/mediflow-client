@@ -91,7 +91,7 @@ export default function Login() {
                 Enter your registered email. We'll send a password reset link.
               </div>
               <Input label="Registered Email *" type="email" value={resetEmail}
-                onChange={e => setResetEmail(e.target.value)} placeholder="doctor@centre.com" required />
+                onChange={v => setResetEmail(v)} placeholder="doctor@centre.com" required />
               <Btn type="submit" disabled={resetLoading} style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
                 {resetLoading ? 'Sending…' : '📧 Send Reset Link'}
               </Btn>
@@ -105,10 +105,10 @@ export default function Login() {
           <>
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <Input label="Email Address" type="email" value={email}
-                onChange={e => setEmail(e.target.value)} placeholder="doctor@centre.com" required />
+                onChange={v => setEmail(v)} placeholder="doctor@centre.com" required />
               <div>
                 <Input label="Password" type="password" value={password}
-                  onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+                  onChange={v => setPassword(v)} placeholder="••••••••" required />
                 <div style={{ textAlign: 'right', marginTop: 6 }}>
                   <button type="button" onClick={() => setShowForgot(true)} style={{
                     background: 'none', border: 'none', color: 'var(--teal)', fontSize: 12,
