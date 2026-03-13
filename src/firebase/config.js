@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { initializeApp } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { getStorage } from 'firebase/storage'
 
@@ -28,4 +28,11 @@ const app        = initializeApp(firebaseConfig)
 export const db      = getFirestore(app)
 export const auth    = getAuth(app)
 export const storage = getStorage(app)
+
+// Cache Firestore data locally — instant load on repeat visits
+enableIndexedDbPersistence(db).catch(e => {
+  if (e.code === 'failed-precondition') console.warn('Firestore persistence: multiple tabs open')
+  if (e.code === 'unimplemented')       console.warn('Firestore persistence: browser not supported')
+})
+
 export default app
