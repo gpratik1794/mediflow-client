@@ -137,7 +137,7 @@ export default function NewAppointment() {
         : EVENING_SLOTS.includes(form.appointmentTime)
           ? 'evening'
           : currentMins < 14 * 60 ? 'morning' : 'evening'
-      const tokenNumber = await getNextToken(centreId, form.date, slotSession)
+      const tokenNumber = await getNextToken(centreId, form.date, slotSession, form.appointmentTime)
       const apptId = await createAppointment(centreId, { ...form, tokenNumber, session: slotSession, status: 'scheduled' })
       logActivity(centreId, { action: 'appt_created', label: 'Appointment Created', detail: `${form.patientName} · ${form.appointmentTime || 'Walk-in'} · Token #${tokenNumber}`, by: user?.email || '' })
       await upsertClinicPatient(centreId, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })

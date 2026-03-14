@@ -87,17 +87,77 @@ export function subscribeToAppointments(centreId, dateStr, callback) {
   }, e => console.warn('[subscribeToAppointments]', e))
 }
 
-export async function getNextToken(centreId, dateStr, session = null) {
+// ── Convert appointment time string to minutes since midnight ────────────────
+function timeToMins(timeStr) {
+  if (!timeStr || timeStr === 'Walk-in (no slot)') return null
+  const parts = timeStr.trim().split(' ')
+  if (parts.length < 2) return null
+  const hm = parts[0].split(':')
+  let h = Number(hm[0])
+  const min = Number(hm[1] || 0)
+  const period = parts[1]
+  if (period === 'PM' && h !== 12) h += 12
+  if (period === 'AM' && h === 12) h = 0
+  return h * 60 + min
+}
+
+/**
+ * getNextToken — assigns token based on slot position in the day, not booking order.
+ *
+ * Logic:
+ * 1. Get all non-cancelled appointments for the date + session.
+ * 2. Collect every unique time slot that is already booked OR being booked now.
+ * 3. Sort all slots chronologically.
+ * 4. The token for a given slot = its 1-based position in that sorted list.
+ *
+ * This means:
+ *   11:00 AM → token 1  (first slot of morning)
+ *   11:10 AM → token 2
+ *   11:20 AM → token 3
+ * ...regardless of what order patients book.
+ *
+ * Walk-ins always get max(existing tokens) + 1 (appended at end).
+ *
+ * @param centreId   - clinic UID
+ * @param dateStr    - 'yyyy-MM-dd'
+ * @param session    - 'morning' | 'evening' | null
+ * @param slotTime   - the slot the new patient is booking (e.g. '11:20 AM')
+ */
+export async function getNextToken(centreId, dateStr, session = null, slotTime = null) {
   const appts = await getAppointments(centreId, dateStr)
-  const filtered = appts.filter(a => {
+
+  // Filter to this session, exclude cancelled
+  const sessionAppts = appts.filter(a => {
     if (a.status === 'cancelled') return false
     if (!session) return true
-    // Use time-based session detection — works even for old appointments without session field
     const apptSession = a.session || getSessionFromTime(a.appointmentTime)
     return apptSession === session
   })
-  const tokens = filtered.map(a => a.tokenNumber || 0)
-  return tokens.length > 0 ? Math.max(...tokens) + 1 : 1
+
+  // Walk-in: no slot time → append after last token
+  if (!slotTime || slotTime === 'Walk-in (no slot)') {
+    const tokens = sessionAppts.map(a => a.tokenNumber || 0)
+    return tokens.length > 0 ? Math.max(...tokens) + 1 : 1
+  }
+
+  // Collect all unique slot times in this session, including the new slot being booked
+  const allSlotTimes = new Set(
+    sessionAppts
+      .map(a => a.appointmentTime)
+      .filter(t => t && t !== 'Walk-in (no slot)')
+  )
+  allSlotTimes.add(slotTime)  // ensure the new slot is included even if first booking
+
+  // Sort chronologically
+  const sortedSlots = Array.from(allSlotTimes).sort((a, b) => {
+    const ma = timeToMins(a) ?? 9999
+    const mb = timeToMins(b) ?? 9999
+    return ma - mb
+  })
+
+  // Token = 1-based position of this slot in the sorted list
+  const position = sortedSlots.indexOf(slotTime) + 1
+  return position > 0 ? position : (sessionAppts.length + 1)
 }
 
 export async function updateAppointment(centreId, apptId, data) {

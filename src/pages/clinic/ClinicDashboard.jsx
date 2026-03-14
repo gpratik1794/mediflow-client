@@ -38,6 +38,7 @@ function maskPhone(phone) {
 
 export default function ClinicDashboard() {
   const { user, profile } = useAuth()
+  const centreId = profile?._centreId || user?.uid
   const navigate = useNavigate()
   const [appointments, setAppointments] = useState([])
   const [followUps, setFollowUps]       = useState([])
@@ -50,20 +51,21 @@ export default function ClinicDashboard() {
   useEffect(() => {
     if (!user) return
     // Real-time appointments
+    if (!centreId) return
     if (unsubRef.current) unsubRef.current()
     setLoading(true)
-    unsubRef.current = subscribeToAppointments(user.uid, today, data => {
+    unsubRef.current = subscribeToAppointments(centreId, today, data => {
       setAppointments(data)
       setLoading(false)
     })
     // Follow-ups are slow-changing — load once
-    getUpcomingFollowUps(user.uid).then(setFollowUps)
+    getUpcomingFollowUps(centreId).then(setFollowUps)
     return () => { if (unsubRef.current) unsubRef.current() }
-  }, [user])
+  }, [user, centreId])
 
   // Keep loadData for manual refresh button (follow-ups)
   async function loadData() {
-    getUpcomingFollowUps(user.uid).then(setFollowUps)
+    if (centreId) getUpcomingFollowUps(centreId).then(setFollowUps)
   }
 
   const total      = appointments.length
