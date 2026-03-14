@@ -1807,7 +1807,7 @@ export default function Settings() {
 
         {/* ── STAFF TAB ── */}
         {activeTab === 'staff' && (() => {
-          if (!staffLoading) loadStaffList()
+          if (!staffLoading && staffList.length === 0) loadStaffList()
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Staff limit info banner */}
