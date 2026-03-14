@@ -70,10 +70,16 @@ function SectionHead({ title, icon }) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ClinicReports() {
   const { user, profile } = useAuth()
+  const [reportTab, setReportTab] = useState('analytics')  // 'analytics' | 'daily'
   const [preset, setPreset]     = useState('today')
   const [custom, setCustom]     = useState({ from: '', to: '' })
   const [appts, setAppts]       = useState([])
   const [loading, setLoading]   = useState(false)
+  // ── Daily sessions ──
+  const [dailyAppts, setDailyAppts]   = useState([])
+  const [dailyLoading, setDailyLoading] = useState(false)
+  const [expandedDay, setExpandedDay] = useState(null)
+  const [dailyMonth, setDailyMonth]   = useState(() => format(new Date(), 'yyyy-MM'))
 
   const range = getRange(preset, custom)
 
@@ -83,6 +89,10 @@ export default function ClinicReports() {
     load()
   }, [preset, custom.from, custom.to, user])
 
+  useEffect(() => {
+    if (user && reportTab === 'daily') loadDailyMonth()
+  }, [user, reportTab, dailyMonth])
+
   async function load() {
     setLoading(true)
     try {
@@ -91,6 +101,37 @@ export default function ClinicReports() {
     } catch (e) { console.error(e) }
     setLoading(false)
   }
+
+  async function loadDailyMonth() {
+    setDailyLoading(true)
+    try {
+      const [yr, mo] = dailyMonth.split('-').map(Number)
+      const from = `${dailyMonth}-01`
+      const lastDay = new Date(yr, mo, 0).getDate()
+      const to = `${dailyMonth}-${String(lastDay).padStart(2,'0')}`
+      const data = await getAppointmentsByRange(user.uid, from, to)
+      setDailyAppts(data)
+    } catch (e) { console.error(e) }
+    setDailyLoading(false)
+  }
+
+  // ── Build per-day summary from dailyAppts ──
+  const dailySummary = useMemo(() => {
+    const byDate = {}
+    dailyAppts.forEach(a => {
+      if (!byDate[a.date]) byDate[a.date] = { date: a.date, appts: [], total: 0, done: 0, collected: 0, pending: 0, free: 0, pendingPatients: [] }
+      byDate[a.date].appts.push(a)
+      byDate[a.date].total++
+      if (a.status === 'done') {
+        byDate[a.date].done++
+        const fee = parseFloat(a.consultationFee || 0)
+        if (a.paymentStatus === 'paid')    byDate[a.date].collected += fee
+        if (a.paymentStatus === 'pending') { byDate[a.date].pending += fee; byDate[a.date].pendingPatients.push(a) }
+        if (a.paymentStatus === 'free')    byDate[a.date].free++
+      }
+    })
+    return Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date))
+  }, [dailyAppts])
 
   // ── Computed metrics ──
   const metrics = useMemo(() => {
@@ -180,6 +221,136 @@ export default function ClinicReports() {
 
   return (
     <Layout title="Reports">
+      {/* ── Tab switcher ── */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
+        {[['analytics', '📊 Analytics'], ['daily', '📅 Daily Sessions']].map(([tab, label]) => (
+          <button key={tab} onClick={() => setReportTab(tab)} style={{
+            padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: reportTab === tab ? 700 : 400,
+            color: reportTab === tab ? 'var(--teal)' : 'var(--slate)',
+            borderBottom: `2.5px solid ${reportTab === tab ? 'var(--teal)' : 'transparent'}`,
+            fontFamily: 'DM Sans, sans-serif', marginBottom: -1, transition: 'all 0.15s'
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* ── DAILY SESSIONS TAB ── */}
+      {reportTab === 'daily' && (
+        <>
+          {/* Month navigator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <button onClick={() => {
+              const d = new Date(dailyMonth + '-01'); d.setMonth(d.getMonth() - 1)
+              setDailyMonth(format(d, 'yyyy-MM')); setExpandedDay(null)
+            }} style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif' }}>‹</button>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', minWidth: 140, textAlign: 'center' }}>
+              {format(new Date(dailyMonth + '-01'), 'MMMM yyyy')}
+            </div>
+            <button onClick={() => {
+              const d = new Date(dailyMonth + '-01'); d.setMonth(d.getMonth() + 1)
+              setDailyMonth(format(d, 'yyyy-MM')); setExpandedDay(null)
+            }} style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif' }}>›</button>
+            <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>
+              {dailySummary.length} day{dailySummary.length !== 1 ? 's' : ''} with activity
+            </div>
+          </div>
+
+          {dailyLoading ? <Empty icon="⏳" message="Loading sessions…" /> :
+           dailySummary.length === 0 ? <Empty icon="📅" message={`No appointments in ${format(new Date(dailyMonth + '-01'), 'MMMM yyyy')}`} /> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {dailySummary.map(day => {
+                const isExpanded = expandedDay === day.date
+                const allCollected = day.pending === 0 && day.done > 0
+                return (
+                  <div key={day.date} style={{ border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', boxShadow: isExpanded ? '0 2px 12px rgba(11,31,58,0.08)' : 'none', transition: 'box-shadow 0.2s' }}>
+                    {/* Day header row */}
+                    <div onClick={() => setExpandedDay(isExpanded ? null : day.date)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', background: isExpanded ? 'var(--navy)' : 'var(--surface)', cursor: 'pointer', transition: 'background 0.2s' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: isExpanded ? '#fff' : 'var(--navy)' }}>
+                          {format(new Date(day.date + 'T00:00:00'), 'EEEE, dd MMM yyyy')}
+                        </div>
+                        <div style={{ fontSize: 11, color: isExpanded ? 'rgba(255,255,255,0.5)' : 'var(--muted)', marginTop: 2 }}>
+                          {day.total} booked · {day.done} seen
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: isExpanded ? 'var(--teal-mid,#5DCABC)' : 'var(--green)' }}>₹{day.collected.toLocaleString('en-IN')}</div>
+                          <div style={{ fontSize: 10, color: isExpanded ? 'rgba(255,255,255,0.45)' : 'var(--muted)' }}>collected</div>
+                        </div>
+                        {day.pending > 0 && (
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: isExpanded ? '#FAC775' : 'var(--amber)' }}>₹{day.pending.toLocaleString('en-IN')}</div>
+                            <div style={{ fontSize: 10, color: isExpanded ? 'rgba(255,255,255,0.45)' : 'var(--muted)' }}>pending</div>
+                          </div>
+                        )}
+                        {allCollected && (
+                          <span style={{ fontSize: 11, fontWeight: 600, color: isExpanded ? '#5DCABC' : 'var(--green)', background: isExpanded ? 'rgba(93,202,188,0.15)' : 'var(--green-bg)', padding: '3px 9px', borderRadius: 20 }}>✓ All collected</span>
+                        )}
+                        <span style={{ fontSize: 16, color: isExpanded ? 'rgba(255,255,255,0.6)' : 'var(--muted)', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block' }}>›</span>
+                      </div>
+                    </div>
+
+                    {/* Expanded patient list */}
+                    {isExpanded && (
+                      <div style={{ background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
+                        {/* Summary stats */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0, borderBottom: '1px solid var(--border)' }}>
+                          {[
+                            { label: 'Total',     value: day.total,      color: 'var(--navy)' },
+                            { label: 'Seen',      value: day.done,       color: 'var(--green)' },
+                            { label: 'Collected', value: `₹${day.collected.toLocaleString('en-IN')}`, color: 'var(--green)' },
+                            { label: 'Pending',   value: day.pending > 0 ? `₹${day.pending.toLocaleString('en-IN')}` : '—', color: day.pending > 0 ? 'var(--amber)' : 'var(--muted)' },
+                            { label: 'Free',      value: day.free || '—', color: 'var(--muted)' },
+                          ].map((s, i) => (
+                            <div key={s.label} style={{ padding: '12px 16px', borderRight: i < 4 ? '1px solid var(--border)' : 'none', textAlign: 'center' }}>
+                              <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
+                              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{s.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Patient rows */}
+                        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                          {day.appts.filter(a => a.status !== 'cancelled').sort((a, b) => (a.tokenNumber || 0) - (b.tokenNumber || 0)).map(a => {
+                            const sc = STATUS_COLOR[a.status] || STATUS_COLOR.scheduled
+                            return (
+                              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--navy)', flexShrink: 0 }}>
+                                  {a.tokenNumber}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--navy)' }}>{a.patientName}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.appointmentTime} · {a.visitType}</div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: sc.bg, color: sc.color }}>{sc.label}</span>
+                                  {a.status === 'done' && (
+                                    a.paymentStatus === 'paid' ? (
+                                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)' }}>✓ ₹{a.consultationFee || 0}</span>
+                                    ) : a.paymentStatus === 'free' ? (
+                                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>Free</span>
+                                    ) : (
+                                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber)' }}>⏳ ₹{a.consultationFee || '?'}</span>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── ANALYTICS TAB ── */}
+      {reportTab === 'analytics' && (<>
       {/* ── Date range filter ── */}
       <Card style={{ marginBottom: 20 }}>
         <div style={{ padding: '16px 20px' }}>
@@ -366,6 +537,7 @@ export default function ClinicReports() {
           </div>
         </>
       )}
+      </>)}
     </Layout>
   )
 }

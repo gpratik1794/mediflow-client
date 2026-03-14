@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
-import { Card, CardHeader, Btn, Input, Toast } from '../../components/UI'
-import { createPrescription, createFollowUp, getMedicines, saveMedicine, DOSAGE_FREQUENCY, DOSAGE_DURATION, DOSAGE_TIMING, DEFAULT_MEDICINES, logActivity, updateAppointment, deriveTagsFromPrescription, updatePatientTags } from '../../firebase/clinicDb'
+import { Card, CardHeader, Btn, Toast } from '../../components/UI'
+import { createPrescription, createFollowUp, getMedicines, saveMedicine, DOSAGE_FREQUENCY, DOSAGE_DURATION, DOSAGE_TIMING, DEFAULT_MEDICINES, logActivity, updateAppointment, deriveTagsFromPrescription, updatePatientTags, getAppointments } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { printPrescription } from '../../utils/printPrescription'
 import { format, addDays } from 'date-fns'
@@ -12,44 +12,44 @@ import { db } from '../../firebase/config'
 
 export default function PrescriptionWriter() {
   const { user, profile } = useAuth()
+  const centreId = profile?._centreId || user?.uid
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  // Pre-fill from appointment query params
-  const apptId   = searchParams.get('apptId') || ''
-  const initPhone = searchParams.get('phone') || ''
-  const initName  = searchParams.get('name') || ''
-  const initAge   = searchParams.get('age') || ''
-  const initGender = searchParams.get('gender') || ''
+  const apptId    = searchParams.get('apptId') || ''
+  const initPhone = searchParams.get('phone')  || ''
+  const initName  = searchParams.get('name')   || ''
+  const initAge   = searchParams.get('age')    || ''
+  const initGender= searchParams.get('gender') || ''
 
-  const [loading, setLoading]   = useState(false)
-  const [toast, setToast]       = useState(null)
+  const [loading, setLoading]     = useState(false)
+  const [toast, setToast]         = useState(null)
   const [medicines, setMedicines] = useState([])
   const [medSearch, setMedSearch] = useState('')
   const [showMedPanel, setShowMedPanel] = useState(false)
   const [activeMedIdx, setActiveMedIdx] = useState(null)
 
-  // Patient
-  const [patient, setPatient] = useState({
-    name: initName, phone: initPhone, age: initAge, gender: initGender
-  })
-
-  // Prescription fields
-  const [diagnosis, setDiagnosis]       = useState('')
-  const [complaints, setComplaints]     = useState('')
-  const [advice, setAdvice]             = useState('')
+  const [patient, setPatient] = useState({ name: initName, phone: initPhone, age: initAge, gender: initGender })
+  const [diagnosis, setDiagnosis]   = useState('')
+  const [complaints, setComplaints] = useState('')
+  const [advice, setAdvice]         = useState('')
   const [selectedMeds, setSelectedMeds] = useState([])
   const [followUpDays, setFollowUpDays] = useState('')
+  const [labTests, setLabTests]     = useState([])
 
-  // Lab tests to order
-  const [labTests, setLabTests] = useState([])  // [{name, instructions}]
+  const [patientTags, setPatientTags] = useState([])
+  const [manualTags, setManualTags]   = useState([])
+  const [savedTags, setSavedTags]     = useState(null)
 
-  // Tags
-  const [patientTags, setPatientTags]   = useState([])   // existing tags on patient
-  const [manualTags, setManualTags]     = useState([])   // manually added in this session
-  const [savedTags, setSavedTags]       = useState(null) // set after save to show confirmation
+  // ── Post-save state ──────────────────────────────────────────────────────────
+  const [savedPrescId, setSavedPrescId]   = useState(null)   // set after save
+  const [nextPatient, setNextPatient]     = useState(null)   // next waiting patient
+  const [pendingFees, setPendingFees]     = useState([])     // done patients with pending fee
+  const [callingIn, setCallingIn]         = useState(false)
+  const [reminderChoice, setReminderChoice] = useState('auto15') // 'auto15'|'auto30'|'now'|'skip'
+  const reminderTimerRef = useRef(null)
 
-  const ALL_TAGS = ['diabetes','hypert','thyroid','asthma','cardiac','ortho','peds','obesity']
+  const ALL_TAGS   = ['diabetes','hypert','thyroid','asthma','cardiac','ortho','peds','obesity']
   const TAG_LABELS = { diabetes:'Diabetes', hypert:'Hypertension', thyroid:'Thyroid', asthma:'Asthma', cardiac:'Cardiac', ortho:'Ortho', peds:'Paeds', obesity:'Obesity' }
   const TAG_COLORS = { diabetes:'#F59E0B', hypert:'#EF4444', thyroid:'#8B5CF6', asthma:'#3B82F6', cardiac:'#EC4899', ortho:'#10B981', peds:'#06B6D4', obesity:'#F97316' }
 
@@ -58,24 +58,22 @@ export default function PrescriptionWriter() {
   useEffect(() => { loadMedicines() }, [user])
   useEffect(() => { if (initPhone) loadPatientTags(initPhone) }, [initPhone])
 
+  // Cleanup reminder timer on unmount
+  useEffect(() => () => { if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current) }, [])
+
   async function loadPatientTags(phone) {
     if (!phone) return
     try {
-      const snap = await getDocs(query(
-        collection(db, 'centres', user.uid, 'patients'),
-        where('phone', '==', phone),
-        limit(1)
-      ))
+      const snap = await getDocs(query(collection(db, 'centres', centreId, 'patients'), where('phone', '==', phone), limit(1)))
       if (!snap.empty) setPatientTags(snap.docs[0].data().tags || [])
     } catch (e) { console.warn('loadPatientTags:', e) }
   }
 
   async function loadMedicines() {
-    let meds = await getMedicines(user.uid)
+    let meds = await getMedicines(centreId)
     if (meds.length === 0) {
-      // Seed defaults on first use
-      for (const m of DEFAULT_MEDICINES) await saveMedicine(user.uid, m)
-      meds = await getMedicines(user.uid)
+      for (const m of DEFAULT_MEDICINES) await saveMedicine(centreId, m)
+      meds = await getMedicines(centreId)
     }
     setMedicines(meds)
   }
@@ -85,29 +83,13 @@ export default function PrescriptionWriter() {
     : medicines
 
   function addMedicine(med) {
-    setSelectedMeds(s => [...s, {
-      ...med,
-      frequency: '1-0-1',
-      duration:  '5 days',
-      timing:    'After food',
-      notes:     ''
-    }])
-    setMedSearch('')
-    setShowMedPanel(false)
+    setSelectedMeds(s => [...s, { ...med, frequency: '1-0-1', duration: '5 days', timing: 'After food', notes: '' }])
+    setMedSearch(''); setShowMedPanel(false)
   }
+  function removeMed(idx) { setSelectedMeds(s => s.filter((_, i) => i !== idx)) }
+  function updateMed(idx, key, val) { setSelectedMeds(s => s.map((m, i) => i === idx ? { ...m, [key]: val } : m)) }
 
-  function removeMed(idx) {
-    setSelectedMeds(s => s.filter((_, i) => i !== idx))
-  }
-
-  function updateMed(idx, key, val) {
-    setSelectedMeds(s => s.map((m, i) => i === idx ? { ...m, [key]: val } : m))
-  }
-
-  const handlePrint = () => printPrescription({
-    patient, diagnosis, complaints, medicines: selectedMeds,
-    advice, labTests: labTests.filter(t => t.name.trim()), followUpDays, profile, date: today
-  })
+  const handlePrint = () => printPrescription({ patient, diagnosis, complaints, medicines: selectedMeds, advice, labTests: labTests.filter(t => t.name.trim()), followUpDays, profile, date: today })
 
   async function handleSave() {
     if (!patient.name || selectedMeds.length === 0) {
@@ -115,12 +97,13 @@ export default function PrescriptionWriter() {
     }
     setLoading(true)
     try {
-      const prescId = await createPrescription(user.uid, {
+      const prescId = await createPrescription(centreId, {
         patientName: patient.name, patientPhone: patient.phone,
         patientAge: patient.age, patientGender: patient.gender,
         diagnosis, complaints, advice, labTests: labTests.filter(t => t.name.trim()),
-        medicines: selectedMeds,
-        date: today, apptId,
+        medicines: selectedMeds, date: today, apptId,
+        appointmentId: apptId,   // store both for compatibility
+        apptId: apptId,
         doctorName: profile?.ownerName || '',
         centreName: profile?.centreName || '',
         centreAddress: profile?.address || '',
@@ -128,366 +111,441 @@ export default function PrescriptionWriter() {
       })
 
       // Mark appointment done
-      if (apptId) await updateAppointment(user.uid, apptId, { status: 'done', prescriptionId: prescId })
-      logActivity(user.uid, { action: 'prescription_created', label: 'Prescription Created', detail: `${patient?.name || ''} · ${diagnosis || 'No diagnosis'}`, by: user?.email || '' })
+      if (apptId) await updateAppointment(centreId, apptId, { status: 'done', prescriptionId: prescId })
+      logActivity(centreId, { action: 'prescription_created', label: 'Prescription Created', detail: `${patient?.name || ''} · ${diagnosis || 'No diagnosis'}`, by: user?.email || '' })
 
-      // Create follow-up if specified
+      // Follow-up
       if (followUpDays) {
         const followUpDate = format(addDays(new Date(), parseInt(followUpDays)), 'yyyy-MM-dd')
-        await createFollowUp(user.uid, {
-          patientName: patient.name, patientPhone: patient.phone,
-          followUpDate, prescriptionId: prescId, apptId
-        })
-        // WhatsApp follow-up reminder (will fire day before via scheduled job - for now save it)
+        await createFollowUp(centreId, { patientName: patient.name, patientPhone: patient.phone, followUpDate, prescriptionId: prescId, apptId })
         if (profile?.whatsappCampaigns?.length) {
-          sendCampaign(profile.whatsappCampaigns, 'followup', patient.phone,
-            [patient.name, profile?.ownerName || 'Doctor', followUpDate]
-          )
+          sendCampaign(profile.whatsappCampaigns, 'followup', patient.phone, [patient.name, profile?.ownerName || 'Doctor', followUpDate])
         }
       }
 
-      // Auto-tag patient based on diagnosis + medicines + manual tags
+      // Auto-tag
       if (patient.phone) {
         const autoTags = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds })
         const allNewTags = Array.from(new Set([...autoTags, ...manualTags]))
-        if (allNewTags.length) {
-          await updatePatientTags(user.uid, patient.phone, allNewTags)
-          setSavedTags(allNewTags)
-        }
+        if (allNewTags.length) { await updatePatientTags(centreId, patient.phone, allNewTags); setSavedTags(allNewTags) }
       }
 
+      setSavedPrescId(prescId)
+
+      // ── Load next waiting + pending fees ──────────────────────────────────
+      const allToday = await getAppointments(centreId, today)
+      const waiting = allToday
+        .filter(a => a.status === 'waiting')
+        .sort((a, b) => (a.tokenNumber || 0) - (b.tokenNumber || 0))
+      setNextPatient(waiting[0] || null)
+      setPendingFees(allToday.filter(a => a.status === 'done' && a.paymentStatus === 'pending'))
+
+      // ── Schedule auto reminder if choice is auto15 ──
+      scheduleReminder('auto15', allToday)
+
       setToast({ message: 'Prescription saved!', type: 'success' })
-      setTimeout(() => navigate(`/clinic/prescription/${prescId}`), 1400)
     } catch (err) {
+      console.error(err)
       setToast({ message: 'Save failed. Try again.', type: 'error' })
     }
     setLoading(false)
   }
 
+  function scheduleReminder(choice, allToday) {
+    if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current)
+    if (choice === 'skip') return
+    const delay = choice === 'auto15' ? 15 * 60 * 1000 : choice === 'auto30' ? 30 * 60 * 1000 : 0
+    if (delay === 0) {
+      sendFeeReminder(allToday)
+      return
+    }
+    reminderTimerRef.current = setTimeout(() => {
+      // Re-fetch to get latest fee status before sending
+      getAppointments(centreId, today).then(latest => sendFeeReminder(latest))
+    }, delay)
+  }
+
+  function sendFeeReminder(allToday) {
+    const stillPending = (allToday || []).filter(a => a.status === 'done' && a.paymentStatus === 'pending')
+    if (stillPending.length === 0) return
+    const doc = profile?.doctors?.[0] || {}
+    const doctorPhone = doc.phone || profile?.phone
+    if (!doctorPhone || !profile?.whatsappCampaigns?.length) return
+    const names = stillPending.map(p => p.patientName).join(', ')
+    const total = stillPending.reduce((s, a) => s + parseFloat(a.consultationFee || 0), 0)
+    sendCampaign(profile.whatsappCampaigns, 'doctor_session_report', doctorPhone,
+      [doc.name || 'Doctor', 'Fee Reminder', format(new Date(), 'dd MMM yyyy'), String(stillPending.length), '—', '—', '₹0', `₹${total}`],
+      null, { centreId })
+  }
+
+  async function handleCallInNext() {
+    if (!nextPatient) return
+    setCallingIn(true)
+    await updateAppointment(centreId, nextPatient.id, { status: 'in-consultation' })
+    logActivity(centreId, { action: 'appt_status_changed', label: 'In Consultation', detail: nextPatient.patientName, by: user?.email || '' })
+    setCallingIn(false)
+    navigate(`/clinic/appointments/${nextPatient.id}`)
+  }
+
+  // ── Render the post-save modal ────────────────────────────────────────────
+  if (savedPrescId) {
+    const isLastPatient = !nextPatient
+    const hasPending    = pendingFees.length > 0
+
+    return (
+      <Layout title="Prescription Saved">
+        <div style={{ maxWidth: 520, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Success header */}
+          <div style={{ background: 'var(--green-bg)', border: '1.5px solid var(--green)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 20, flexShrink: 0 }}>✓</div>
+            <div>
+              <div style={{ fontWeight: 700, color: 'var(--green)', fontSize: 15 }}>Prescription saved for {patient.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--slate)', marginTop: 2 }}>Visit marked as done</div>
+            </div>
+          </div>
+
+          {/* Pending fee warning */}
+          {hasPending && (
+            <div style={{ background: 'var(--amber-bg)', border: '1.5px solid var(--amber)', borderRadius: 12, padding: '14px 18px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--amber)', marginBottom: 6 }}>
+                💰 {pendingFees.length} patient fee{pendingFees.length > 1 ? 's' : ''} still pending
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {pendingFees.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--slate)' }}>
+                    <span>{p.patientName} (#{p.tokenNumber})</span>
+                    <span style={{ fontWeight: 600 }}>₹{p.consultationFee || '?'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Last patient notice */}
+          {isLastPatient && (
+            <div style={{ background: 'var(--blue-bg,#EFF6FF)', border: '1.5px solid var(--blue,#3B82F6)', borderRadius: 12, padding: '14px 18px', fontSize: 13, color: 'var(--navy)', lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>🔔 Last checked-in patient</div>
+              No more patients in the queue. Please confirm with the receptionist if anyone is waiting outside.
+            </div>
+          )}
+
+          {/* Next patient action */}
+          {!isLastPatient && nextPatient && (
+            <div style={{ background: 'var(--navy)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Next patient waiting</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#5DCABC', lineHeight: 1 }}>#{nextPatient.tokenNumber}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginTop: 3 }}>{nextPatient.patientName}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                  {nextPatient.appointmentTime}
+                  {nextPatient.vitals && Object.keys(nextPatient.vitals).length > 0 ? ' · vitals recorded' : ''}
+                </div>
+              </div>
+              <button onClick={handleCallInNext} disabled={callingIn}
+                style={{ padding: '12px 20px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: callingIn ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap', opacity: callingIn ? 0.7 : 1 }}>
+                {callingIn ? 'Calling…' : 'Save + Call In →'}
+              </button>
+            </div>
+          )}
+
+          {/* Fee reminder options (if pending fees exist) */}
+          {hasPending && (
+            <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>Fee reminder to doctor</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+                Auto-send a WhatsApp to doctor once receptionist marks fees, or on a timer:
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {[
+                  { key: 'auto15', icon: '⏱', label: 'Auto 15 min', sub: 'If still pending' },
+                  { key: 'auto30', icon: '⏱', label: 'Auto 30 min', sub: 'Longer wait' },
+                  { key: 'now',    icon: '📲', label: 'Send now',    sub: 'Immediate' },
+                  { key: 'skip',   icon: '✕',  label: 'Skip',       sub: 'No reminder' },
+                ].map(opt => (
+                  <button key={opt.key} type="button"
+                    onClick={() => {
+                      setReminderChoice(opt.key)
+                      if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current)
+                      scheduleReminder(opt.key, null)
+                    }}
+                    style={{
+                      padding: '10px 8px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                      border: `1.5px solid ${reminderChoice === opt.key ? 'var(--teal)' : 'var(--border)'}`,
+                      background: reminderChoice === opt.key ? 'var(--teal-light)' : 'var(--bg)',
+                      fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s'
+                    }}>
+                    <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--navy)' }}>{opt.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{opt.sub}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Session report + view prescription buttons */}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => navigate('/clinic/appointments')}
+              style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--slate)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+              ← Back to Queue
+            </button>
+            <button onClick={() => navigate(`/clinic/prescription/${savedPrescId}`)}
+              style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+              View Prescription
+            </button>
+          </div>
+
+        </div>
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      </Layout>
+    )
+  }
+
+  // ── Main prescription writer form ─────────────────────────────────────────
   const chips = (opts, val, set) => (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
       {opts.map(o => (
-        <button key={o} type="button" onClick={() => set(o)} style={{
-          padding: '4px 10px', borderRadius: 20, border: '1.5px solid',
-          borderColor: val === o ? 'var(--teal)' : 'var(--border)',
-          background: val === o ? 'var(--teal-light)' : 'none',
-          color: val === o ? 'var(--teal)' : 'var(--slate)',
-          fontSize: 11, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
-          fontWeight: val === o ? 600 : 400, transition: 'all 0.15s'
-        }}>{o}</button>
+        <button key={o} type="button" onClick={() => set(o)}
+          style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: `1.5px solid ${val === o ? 'var(--teal)' : 'var(--border)'}`, background: val === o ? 'var(--teal-light)' : 'none', color: val === o ? 'var(--teal)' : 'var(--slate)' }}>
+          {o}
+        </button>
       ))}
     </div>
   )
 
   return (
-    <Layout
-      title="Write Prescription"
+    <Layout title="Write Prescription"
       action={
         <div style={{ display: 'flex', gap: 10 }}>
+          <Btn variant="ghost" small onClick={() => navigate(-1)}>← Back</Btn>
           <Btn variant="ghost" small onClick={handlePrint}>🖨 Print</Btn>
-          <Btn onClick={handleSave} disabled={loading}>
-            {loading ? 'Saving…' : '💾 Save & Complete'}
-          </Btn>
         </div>
       }
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
+        {/* LEFT */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* MAIN */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Patient */}
+          <Card>
+            <CardHeader title="Patient" />
+            <div style={{ padding: '16px 22px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {[
+                { label: 'Full Name', key: 'name', placeholder: 'Patient name' },
+                { label: 'Phone', key: 'phone', placeholder: '10-digit mobile' },
+                { label: 'Age (years)', key: 'age', placeholder: 'e.g. 35' },
+                { label: 'Gender', key: 'gender', placeholder: 'Male / Female / Other' },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={lStyle}>{f.label}</label>
+                  <input value={patient[f.key] || ''} onChange={e => setPatient(p => ({ ...p, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder} style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
+              ))}
+            </div>
+          </Card>
 
-          {/* Patient + Clinical */}
+          {/* Clinical */}
           <Card>
             <CardHeader title="Clinical Details" />
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ flex: 2 }}>
-                  <label style={lStyle}>Patient Name</label>
-                  <input value={patient.name} onChange={e => setPatient(p => ({ ...p, name: e.target.value }))}
-                    style={inputStyle} placeholder="Patient full name" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={lStyle}>Age</label>
-                  <input value={patient.age} onChange={e => setPatient(p => ({ ...p, age: e.target.value }))}
-                    style={inputStyle} placeholder="Years" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={lStyle}>Gender</label>
-                  <select value={patient.gender} onChange={e => setPatient(p => ({ ...p, gender: e.target.value }))}
-                    style={{ ...inputStyle, appearance: 'none' }}>
-                    <option value="">Select</option>
-                    <option>Male</option><option>Female</option><option>Other</option>
-                  </select>
-                </div>
-              </div>
+            <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={lStyle}>Chief Complaints</label>
                 <textarea value={complaints} onChange={e => setComplaints(e.target.value)}
-                  placeholder="e.g. Fever, cough and cold since 3 days. Sore throat." rows={2}
-                  style={{ ...inputStyle, resize: 'vertical' }} />
+                  placeholder="What is the patient complaining about?"
+                  rows={2} style={{ ...inputStyle, resize: 'vertical' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
               </div>
               <div>
                 <label style={lStyle}>Diagnosis</label>
                 <input value={diagnosis} onChange={e => setDiagnosis(e.target.value)}
-                  style={inputStyle} placeholder="e.g. Viral Upper Respiratory Tract Infection" />
+                  placeholder="e.g. Upper respiratory tract infection"
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
+              </div>
+              <div>
+                <label style={lStyle}>Advice / Instructions</label>
+                <textarea value={advice} onChange={e => setAdvice(e.target.value)}
+                  placeholder="Rest, diet advice, precautions…"
+                  rows={2} style={{ ...inputStyle, resize: 'vertical' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
               </div>
             </div>
           </Card>
 
           {/* Medicines */}
           <Card>
-            <CardHeader title={`Medicines (${selectedMeds.length})`}
+            <CardHeader title="℞ Medicines" sub={`${selectedMeds.length} added`}
               action={
-                <Btn small onClick={() => setShowMedPanel(!showMedPanel)}>
-                  + Add Medicine
-                </Btn>
+                <Btn small onClick={() => setShowMedPanel(v => !v)}>+ Add Medicine</Btn>
               }
             />
-
-            {/* Medicine search panel */}
             {showMedPanel && (
-              <div style={{ padding: '14px 22px', background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ padding: '10px 22px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
                 <input value={medSearch} onChange={e => setMedSearch(e.target.value)}
-                  placeholder="🔍 Search medicine name…" autoFocus
-                  style={{ ...inputStyle, marginBottom: 10 }} />
-                <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {filteredMeds.slice(0, 20).map(m => (
-                    <div key={m.id} onClick={() => addMedicine(m)} style={{
-                      padding: '9px 14px', borderRadius: 8, cursor: 'pointer',
-                      background: 'var(--surface)', border: '1px solid var(--border)',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                    }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--teal)'}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                    >
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--navy)' }}>{m.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.type} · {m.category}</div>
-                      </div>
-                      <span style={{ color: 'var(--teal)', fontSize: 18 }}>+</span>
-                    </div>
+                  placeholder="Search medicines…" autoFocus
+                  style={{ ...inputStyle, marginBottom: 8 }}
+                  onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
+                <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {filteredMeds.map(m => (
+                    <button key={m.id || m.name} type="button" onClick={() => addMedicine(m)}
+                      style={{ padding: '8px 12px', borderRadius: 7, background: 'var(--surface)', border: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)' }}>
+                      <span style={{ fontWeight: 500 }}>{m.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>{m.type}</span>
+                    </button>
                   ))}
                   {filteredMeds.length === 0 && (
-                    <div style={{ padding: 16, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-                      Not found. <button onClick={() => {
-                        setShowMedPanel(false)
-                        setSelectedMeds(s => [...s, { name: medSearch, type: 'Tablet', frequency: '1-0-1', duration: '5 days', timing: 'After food', notes: '' }])
-                        setMedSearch('')
-                      }} style={{ color: 'var(--teal)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
-                        Add "{medSearch}" directly
-                      </button>
-                    </div>
+                    <button type="button" onClick={() => addMedicine({ name: medSearch, type: 'Tab' })}
+                      style={{ padding: '8px 12px', borderRadius: 7, background: 'var(--teal-light)', border: '1px solid var(--teal)', textAlign: 'left', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--teal)', fontWeight: 500 }}>
+                      + Add "{medSearch}" as new medicine
+                    </button>
                   )}
                 </div>
               </div>
             )}
-
-            {selectedMeds.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--muted)' }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>💊</div>
-                <div style={{ fontSize: 14 }}>Click "+ Add Medicine" to start the prescription</div>
-              </div>
-            ) : (
-              <div style={{ padding: '12px 0' }}>
-                {selectedMeds.map((med, idx) => (
-                  <div key={idx} style={{ padding: '16px 22px', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--navy)' }}>{med.name}</div>
-                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>{med.type}</div>
-                      </div>
-                      <button onClick={() => removeMed(idx)} style={{
-                        background: 'var(--red-bg)', color: 'var(--red)', border: 'none',
-                        borderRadius: 8, width: 28, height: 28, cursor: 'pointer', fontSize: 16
-                      }}>×</button>
+            <div style={{ padding: '0 22px' }}>
+              {selectedMeds.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No medicines added yet</div>
+              ) : selectedMeds.map((m, idx) => (
+                <div key={idx} style={{ padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
+                      {idx + 1}. {m.name} <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>({m.type})</span>
                     </div>
-
-                    {/* Frequency chips */}
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontWeight: 500 }}>FREQUENCY (M-A-E)</div>
-                      {chips(DOSAGE_FREQUENCY, med.frequency, v => updateMed(idx, 'frequency', v))}
-                    </div>
-
-                    {/* Duration + Timing */}
-                    <div style={{ display: 'flex', gap: 20, marginBottom: 10 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontWeight: 500 }}>DURATION</div>
-                        {chips(DOSAGE_DURATION, med.duration, v => updateMed(idx, 'duration', v))}
-                      </div>
-                    </div>
-
+                    <button type="button" onClick={() => removeMed(idx)}
+                      style={{ background: 'var(--red-bg)', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: 'var(--red)', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>Remove</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontWeight: 500 }}>TIMING</div>
-                      {chips(DOSAGE_TIMING, med.timing, v => updateMed(idx, 'timing', v))}
+                      <label style={lStyle}>Frequency</label>
+                      {chips(DOSAGE_FREQUENCY, m.frequency, v => updateMed(idx, 'frequency', v))}
                     </div>
-
-                    {/* Special instructions */}
-                    <div style={{ marginTop: 10 }}>
-                      <input value={med.notes} onChange={e => updateMed(idx, 'notes', e.target.value)}
-                        placeholder="Special instructions (optional)…"
-                        style={{ ...inputStyle, fontSize: 12 }} />
+                    <div>
+                      <label style={lStyle}>Duration</label>
+                      {chips(DOSAGE_DURATION, m.duration, v => updateMed(idx, 'duration', v))}
                     </div>
-
-                    {/* Preview line */}
-                    <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--teal-light)', borderRadius: 8, fontSize: 12, color: 'var(--teal)', fontStyle: 'italic' }}>
-                      {med.name} — {med.frequency} × {med.duration} ({med.timing})
-                      {med.notes && ` · ${med.notes}`}
+                    <div>
+                      <label style={lStyle}>Timing</label>
+                      {chips(DOSAGE_TIMING, m.timing, v => updateMed(idx, 'timing', v))}
+                    </div>
+                    <div>
+                      <label style={lStyle}>Notes (optional)</label>
+                      <input value={m.notes || ''} onChange={e => updateMed(idx, 'notes', e.target.value)}
+                        placeholder="e.g. Crush before giving"
+                        style={{ ...inputStyle, fontSize: 12, padding: '6px 10px' }}
+                        onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                        onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* Advice + Lab tests */}
-          <Card>
-            <CardHeader title="Advice & Lab Tests" />
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={lStyle}>General Advice</label>
-                <textarea value={advice} onChange={e => setAdvice(e.target.value)}
-                  placeholder="e.g. Drink plenty of fluids. Rest for 3 days. Avoid cold drinks." rows={2}
-                  style={{ ...inputStyle, resize: 'vertical' }} />
-              </div>
-              <div>
-                <label style={lStyle}>Lab Tests Advised</label>
-                {labTests.map((t, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
-                    <input
-                      value={t.name}
-                      onChange={e => setLabTests(ts => ts.map((x,i) => i===idx ? {...x, name: e.target.value} : x))}
-                      placeholder="Test name e.g. CBC, HbA1c"
-                      style={{ ...inputStyle, flex: 1.5 }}
-                    />
-                    <input
-                      value={t.instructions}
-                      onChange={e => setLabTests(ts => ts.map((x,i) => i===idx ? {...x, instructions: e.target.value} : x))}
-                      placeholder="Instructions e.g. Fasting, 8am"
-                      style={{ ...inputStyle, flex: 1 }}
-                    />
-                    <button type="button" onClick={() => setLabTests(ts => ts.filter((_,i) => i !== idx))}
-                      style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>
-                      ✕
-                    </button>
-                  </div>
-                ))}
-                <button type="button"
-                  onClick={() => setLabTests(ts => [...ts, { name: '', instructions: '' }])}
-                  style={{ padding: '7px 16px', borderRadius: 8, border: '1.5px dashed var(--border)', background: 'none', color: 'var(--teal)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', width: '100%', marginTop: labTests.length ? 0 : 0 }}>
-                  + Add Lab Test
-                </button>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* RIGHT PANEL */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Follow-up */}
-          <Card>
-            <CardHeader title="Follow-up" />
-            <div style={{ padding: '16px 20px' }}>
-              <label style={lStyle}>Schedule Follow-up After</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                {['3', '5', '7', '10', '14', '30'].map(d => (
-                  <button key={d} type="button" onClick={() => setFollowUpDays(followUpDays === d ? '' : d)}
-                    style={{
-                      padding: '6px 14px', borderRadius: 20, border: '1.5px solid',
-                      borderColor: followUpDays === d ? 'var(--teal)' : 'var(--border)',
-                      background: followUpDays === d ? 'var(--teal-light)' : 'none',
-                      color: followUpDays === d ? 'var(--teal)' : 'var(--slate)',
-                      fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
-                      fontWeight: followUpDays === d ? 600 : 400
-                    }}>{d} days</button>
-                ))}
-              </div>
-              {followUpDays && (
-                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--teal)', background: 'var(--teal-light)', borderRadius: 8, padding: '8px 12px' }}>
-                  📅 Follow-up on: {format(addDays(new Date(), parseInt(followUpDays)), 'dd MMM yyyy')}
-                  <br />💬 Reminder will be sent on WhatsApp
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* Prescription summary */}
-          <Card>
-            <CardHeader title="Summary" />
-            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[
-                ['Patient', patient.name || '—'],
-                ['Age', patient.age ? patient.age + 'y' : '—'],
-                ['Gender', patient.gender || '—'],
-                ['Diagnosis', diagnosis || '—'],
-                ['Medicines', selectedMeds.length + ' added'],
-                ['Lab Tests', labTests.filter(t=>t.name.trim()).length + ' added'],
-                ['Follow-up', followUpDays ? `In ${followUpDays} days` : 'None'],
-              ].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span style={{ color: 'var(--muted)' }}>{l}</span>
-                  <span style={{ fontWeight: 500, color: 'var(--navy)' }}>{v}</span>
                 </div>
               ))}
             </div>
           </Card>
 
-          {/* Patient Tags */}
+          {/* Lab tests */}
+          <Card>
+            <CardHeader title="Investigations" sub="Lab tests to order"
+              action={<Btn small onClick={() => setLabTests(t => [...t, { name: '', instructions: '' }])}>+ Add Test</Btn>}
+            />
+            <div style={{ padding: '8px 22px 16px' }}>
+              {labTests.length === 0 ? (
+                <div style={{ padding: '12px 0', color: 'var(--muted)', fontSize: 13 }}>No tests ordered</div>
+              ) : labTests.map((t, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
+                  <input value={t.name} onChange={e => setLabTests(ts => ts.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                    placeholder="Test name e.g. CBC, HbA1c"
+                    style={{ ...inputStyle, flex: 2, fontSize: 12 }}
+                    onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  />
+                  <input value={t.instructions} onChange={e => setLabTests(ts => ts.map((x, i) => i === idx ? { ...x, instructions: e.target.value } : x))}
+                    placeholder="Instructions (optional)"
+                    style={{ ...inputStyle, flex: 2, fontSize: 12 }}
+                    onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  />
+                  <button type="button" onClick={() => setLabTests(ts => ts.filter((_, i) => i !== idx))}
+                    style={{ background: 'var(--red-bg)', border: 'none', borderRadius: 6, padding: '8px 10px', color: 'var(--red)', cursor: 'pointer', flexShrink: 0, fontFamily: 'DM Sans, sans-serif', fontSize: 12 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* RIGHT */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Follow-up */}
+          <Card>
+            <CardHeader title="Follow-up" />
+            <div style={{ padding: '16px 22px' }}>
+              <label style={lStyle}>Follow-up in (days)</label>
+              {chips(['3', '5', '7', '10', '14', '30'], followUpDays, setFollowUpDays)}
+              {followUpDays && (
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--teal)' }}>
+                  📅 Follow-up: {format(addDays(new Date(), parseInt(followUpDays)), 'dd MMM yyyy')}
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Tags */}
           <Card>
             <CardHeader title="Patient Tags" />
-            <div style={{ padding: '14px 18px' }}>
-              {/* Existing tags on patient */}
+            <div style={{ padding: '14px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {patientTags.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, marginBottom: 6 }}>EXISTING TAGS</div>
+                <div>
+                  <label style={{ ...lStyle, marginBottom: 6 }}>EXISTING TAGS</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {patientTags.map(tag => (
-                      <span key={tag} style={{
-                        padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                        background: TAG_COLORS[tag] + '20', color: TAG_COLORS[tag] || 'var(--teal)',
-                        border: `1px solid ${TAG_COLORS[tag] || 'var(--teal)'}40`
-                      }}>{TAG_LABELS[tag] || tag}</span>
+                      <span key={tag} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: (TAG_COLORS[tag] || 'var(--teal)') + '20', color: TAG_COLORS[tag] || 'var(--teal)' }}>
+                        {TAG_LABELS[tag] || tag}
+                      </span>
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* Manual tag chips */}
-              <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, marginBottom: 6 }}>
-                {patientTags.length > 0 ? 'ADD MORE TAGS' : 'TAG THIS PATIENT'}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {ALL_TAGS.filter(t => !patientTags.includes(t)).map(tag => {
-                  const on = manualTags.includes(tag)
-                  return (
-                    <button key={tag} type="button"
-                      onClick={() => setManualTags(ts => on ? ts.filter(t => t !== tag) : [...ts, tag])}
-                      style={{
-                        padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                        border: `1.5px solid ${on ? TAG_COLORS[tag] : 'var(--border)'}`,
-                        background: on ? TAG_COLORS[tag] + '20' : 'none',
-                        color: on ? TAG_COLORS[tag] : 'var(--slate)',
-                        cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s'
-                      }}>{on ? '✓ ' : ''}{TAG_LABELS[tag] || tag}</button>
-                  )
-                })}
+              <div>
+                <label style={lStyle}>{patientTags.length > 0 ? 'ADD MORE TAGS' : 'TAG THIS PATIENT'}</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {ALL_TAGS.filter(t => !patientTags.includes(t)).map(tag => {
+                    const on = manualTags.includes(tag)
+                    return (
+                      <button key={tag} type="button"
+                        onClick={() => setManualTags(ts => on ? ts.filter(t => t !== tag) : [...ts, tag])}
+                        style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, border: `1.5px solid ${on ? TAG_COLORS[tag] : 'var(--border)'}`, background: on ? TAG_COLORS[tag] + '20' : 'none', color: on ? TAG_COLORS[tag] : 'var(--slate)', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s' }}>
+                        {on ? '✓ ' : ''}{TAG_LABELS[tag] || tag}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
 
-              {/* Auto-tag preview */}
               {(diagnosis || selectedMeds.length > 0) && (() => {
-                const preview = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds })
-                  .filter(t => !patientTags.includes(t))
+                const preview = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds }).filter(t => !patientTags.includes(t))
                 if (!preview.length) return null
                 return (
-                  <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--teal-light)', borderRadius: 8, fontSize: 11, color: 'var(--teal)' }}>
+                  <div style={{ padding: '8px 10px', background: 'var(--teal-light)', borderRadius: 8, fontSize: 11, color: 'var(--teal)' }}>
                     🏷 Will auto-tag: {preview.map(t => TAG_LABELS[t] || t).join(', ')}
                   </div>
                 )
               })()}
 
-              {/* Saved confirmation */}
               {savedTags && (
-                <div style={{ marginTop: 10, padding: '8px 10px', background: '#D1FAE5', borderRadius: 8, fontSize: 11, color: '#065F46', fontWeight: 500 }}>
+                <div style={{ padding: '8px 10px', background: '#D1FAE5', borderRadius: 8, fontSize: 11, color: '#065F46', fontWeight: 500 }}>
                   ✓ Tags saved: {savedTags.map(t => TAG_LABELS[t] || t).join(', ')}
                 </div>
               )}
@@ -502,122 +560,10 @@ export default function PrescriptionWriter() {
           </Btn>
         </div>
       </div>
-
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </Layout>
   )
 }
 
-// ── STYLES ────────────────────────────────────────────────
 const lStyle = { fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 'block', marginBottom: 5, letterSpacing: 0.3 }
-const inputStyle = {
-  width: '100%', border: '1.5px solid var(--border)', borderRadius: 8,
-  padding: '9px 12px', fontSize: 13, outline: 'none',
-  fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', background: 'var(--surface)'
-}
-
-// ── PRINT PRESCRIPTION ────────────────────────────────────
-function PrintPrescription({ patient, diagnosis, complaints, medicines, advice, labTests, followUpDays, profile, date }) {
-  const followUpDate = followUpDays ? format(addDays(new Date(), parseInt(followUpDays)), 'dd MMM yyyy') : null
-
-  return (
-    <div style={{ fontFamily: 'DM Sans, sans-serif', padding: 32, maxWidth: 700, margin: '0 auto', color: '#111', minHeight: '100vh' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, paddingBottom: 16, borderBottom: '3px solid #0B9E8A' }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#0D2B3E' }}>Dr. {profile?.ownerName}</div>
-          <div style={{ fontSize: 13, color: '#666', marginTop: 2 }}>{profile?.centreName}</div>
-          <div style={{ fontSize: 12, color: '#888' }}>{profile?.address}</div>
-          <div style={{ fontSize: 12, color: '#888' }}>📞 {profile?.phone}</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 1 }}>Prescription</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0D2B3E', marginTop: 4 }}>{date}</div>
-        </div>
-      </div>
-
-      {/* Patient strip */}
-      <div style={{ background: '#F4F7F9', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 32, marginBottom: 20 }}>
-        <div><div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase' }}>Name</div><div style={{ fontSize: 14, fontWeight: 600 }}>{patient.name}</div></div>
-        <div><div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase' }}>Age</div><div style={{ fontSize: 14, fontWeight: 600 }}>{patient.age} yrs</div></div>
-        <div><div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase' }}>Gender</div><div style={{ fontSize: 14, fontWeight: 600 }}>{patient.gender}</div></div>
-        {patient.phone && <div><div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase' }}>Phone</div><div style={{ fontSize: 14, fontWeight: 600 }}>{patient.phone}</div></div>}
-      </div>
-
-      {/* Complaints + Diagnosis */}
-      {complaints && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Chief Complaints</div>
-          <div style={{ fontSize: 13, color: '#444' }}>{complaints}</div>
-        </div>
-      )}
-      {diagnosis && (
-        <div style={{ marginBottom: 20, padding: '10px 14px', background: '#E6F7F5', borderRadius: 8, borderLeft: '3px solid #0B9E8A' }}>
-          <span style={{ fontSize: 11, color: '#0B9E8A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>Diagnosis: </span>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#0D2B3E' }}>{diagnosis}</span>
-        </div>
-      )}
-
-      {/* Rx */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 28, fontFamily: 'serif', color: '#0B9E8A', marginBottom: 10 }}>℞</div>
-        {medicines.map((m, i) => (
-          <div key={i} style={{ marginBottom: 14, paddingLeft: 16, borderLeft: '3px solid #E2EAF0' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#0D2B3E' }}>{i + 1}. {m.name}</span>
-              <span style={{ fontSize: 12, color: '#888' }}>({m.type})</span>
-            </div>
-            <div style={{ fontSize: 13, color: '#555', marginTop: 3 }}>
-              {m.frequency} — {m.duration} — {m.timing}
-              {m.notes && ` · ${m.notes}`}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Lab tests */}
-      {labTests && labTests.length > 0 && (
-        <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FEF6E7', borderRadius: 8 }}>
-          <div style={{ fontSize: 11, color: '#F5A623', fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>Investigations Advised</div>
-          {labTests.map((t, i) => (
-            <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 4, fontSize: 13, color: '#444' }}>
-              <span style={{ fontWeight: 600, minWidth: 20 }}>{i+1}.</span>
-              <span style={{ flex: 1 }}>{t.name}</span>
-              {t.instructions && <span style={{ color: '#888', fontStyle: 'italic' }}>{t.instructions}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Advice */}
-      {advice && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Advice</div>
-          <div style={{ fontSize: 13, color: '#444' }}>{advice}</div>
-        </div>
-      )}
-
-      {/* Follow-up */}
-      {followUpDate && (
-        <div style={{ marginBottom: 20, padding: '10px 14px', background: '#E6F7F5', borderRadius: 8 }}>
-          <span style={{ fontSize: 12, color: '#0B9E8A', fontWeight: 600 }}>📅 Follow-up: </span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{followUpDate}</span>
-        </div>
-      )}
-
-      {/* Signature */}
-      <div style={{ marginTop: 48, display: 'flex', justifyContent: 'flex-end' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 120, borderTop: '1.5px solid #0D2B3E', paddingTop: 6 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#0D2B3E' }}>Dr. {profile?.ownerName}</div>
-            <div style={{ fontSize: 11, color: '#888' }}>Signature</div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 32, textAlign: 'center', fontSize: 11, color: '#ccc', borderTop: '1px solid #eee', paddingTop: 12 }}>
-        Powered by MediFlow · {profile?.centreName}
-      </div>
-    </div>
-  )
-}
+const inputStyle = { width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', background: 'var(--surface)', transition: 'border 0.18s', boxSizing: 'border-box' }
