@@ -32,9 +32,7 @@ function maskPhone(phone) {
 export default function AppointmentDetail() {
   const { id } = useParams()
   const { user, profile, role, userRecord } = useAuth()
-  // For staff, use _centreId from profile; for owner, use user.uid
   const centreId = profile?._centreId || user?.uid
-  // Phone visible to owner always; staff only if showPhone permission is on
   const canSeePhone = !role || userRecord?.permissions?.showPhone === true
   const navigate = useNavigate()
   const [appt, setAppt]         = useState(null)
@@ -47,6 +45,8 @@ export default function AppointmentDetail() {
   const [fee, setFee]           = useState('')
   const [paymentStatus, setPaymentStatus] = useState('pending')
   const [savingFee, setSavingFee] = useState(false)
+  // ── NEW: gate to block "Done" if no prescription written this session ──
+  const [prescBlockModal, setPrescBlockModal] = useState(false)
 
   useEffect(() => { if (user && id) loadData() }, [id, user])
 
@@ -61,7 +61,6 @@ export default function AppointmentDetail() {
         setNotes(data.clinicalNotes || '')
         setFee(data.consultationFee || '')
         setPaymentStatus(data.paymentStatus || 'pending')
-        // Load prescriptions — wrapped separately so a missing index doesn't block loading
         try {
           const presc = await getPrescriptions(centreId, data.phone)
           setPresc(presc)
@@ -75,15 +74,26 @@ export default function AppointmentDetail() {
     setLoading(false)
   }
 
+  // ── NEW: check if a prescription exists for THIS appointment ──
+  function hasPrescriptionForThisAppt() {
+    return prescriptions.some(p => p.appointmentId === id || p.apptId === id)
+  }
+
   async function handleStatusUpdate(newStatus) {
+    // ── GATE: block moving to "done" if no prescription written for this appointment ──
+    if (newStatus === 'done' && appt.status === 'in-consultation') {
+      if (!hasPrescriptionForThisAppt()) {
+        setPrescBlockModal(true)
+        return
+      }
+    }
+
     try {
       if (newStatus === 'waiting' && appt.status === 'scheduled') {
         const penalty = parseInt(profile?.lateCheckinPenalty || '0')
         if (penalty > 0) {
           try {
             const allToday = await getAppointments(centreId, appt.date)
-            // Only count patients who actually checked in (waiting/in-consultation/done)
-            // Scheduled patients who haven't arrived don't count against late patient
             const checkedIn = allToday.filter(a =>
               a.id !== appt.id &&
               ['waiting', 'in-consultation', 'done'].includes(a.status)
@@ -110,8 +120,8 @@ export default function AppointmentDetail() {
         }
       }
       await updateAppointment(centreId, id, { status: newStatus })
-    const labelMap = { done: 'Appointment Done', cancelled: 'Appointment Cancelled', 'in-consultation': 'In Consultation', waiting: 'Waiting' }
-    logActivity(centreId, { action: 'appt_status_changed', label: labelMap[newStatus] || 'Status Changed', detail: appt?.patientName || id, by: user?.email || '' })
+      const labelMap = { done: 'Appointment Done', cancelled: 'Appointment Cancelled', 'in-consultation': 'In Consultation', waiting: 'Waiting' }
+      logActivity(centreId, { action: 'appt_status_changed', label: labelMap[newStatus] || 'Status Changed', detail: appt?.patientName || id, by: user?.email || '' })
       setAppt(a => ({ ...a, status: newStatus }))
       setToast({ message: `Status → ${STATUS_LABELS[newStatus]}`, type: 'success' })
     } catch (e) {
@@ -139,6 +149,8 @@ export default function AppointmentDetail() {
 
   const currentIdx = STATUS_FLOW.indexOf(appt.status)
   const sc = STATUS_COLORS[appt.status] || STATUS_COLORS.scheduled
+  // ── NEW: show prescription warning banner when in-consultation and no prescription yet ──
+  const showPrescWarning = appt.status === 'in-consultation' && !hasPrescriptionForThisAppt()
 
   return (
     <Layout
@@ -159,6 +171,26 @@ export default function AppointmentDetail() {
         {/* LEFT */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+          {/* ── NEW: Prescription reminder banner ── */}
+          {showPrescWarning && (
+            <div style={{
+              background: '#FFF7ED', border: '1.5px solid #F97316', borderRadius: 12,
+              padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16
+            }}>
+              <div>
+                <div style={{ fontWeight: 700, color: '#9A3412', fontSize: 13, marginBottom: 2 }}>
+                  ✍ Write prescription before marking as Done
+                </div>
+                <div style={{ fontSize: 12, color: '#C2410C' }}>
+                  Patient is in consultation. A prescription must be saved before this appointment can be closed.
+                </div>
+              </div>
+              <Btn small onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}>
+                ✍ Write Now
+              </Btn>
+            </div>
+          )}
+
           {/* Status tracker */}
           <Card>
             <CardHeader title="Consultation Status" />
@@ -169,10 +201,19 @@ export default function AppointmentDetail() {
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 13, fontWeight: 600, cursor: i === currentIdx + 1 ? 'pointer' : 'default',
-                        background: i <= currentIdx ? 'var(--teal)' : 'var(--border)',
+                        fontSize: 13, fontWeight: 600,
+                        // ── NEW: grey out the "done" step circle if prescription missing ──
+                        cursor: i === currentIdx + 1 && !(s === 'done' && showPrescWarning) ? 'pointer' : 'default',
+                        background: i <= currentIdx ? 'var(--teal)' : (s === 'done' && showPrescWarning ? '#E5E7EB' : 'var(--border)'),
                         color: i <= currentIdx ? '#fff' : 'var(--muted)', transition: 'all 0.2s'
-                      }} onClick={() => i === currentIdx + 1 && handleStatusUpdate(s)}>
+                      }} onClick={() => {
+                        if (i !== currentIdx + 1) return
+                        if (s === 'done' && showPrescWarning) {
+                          setPrescBlockModal(true)
+                          return
+                        }
+                        handleStatusUpdate(s)
+                      }}>
                         {i < currentIdx ? '✓' : i + 1}
                       </div>
                       <span style={{ fontSize: 10, color: i <= currentIdx ? 'var(--teal)' : 'var(--muted)', textAlign: 'center', maxWidth: 70 }}>
@@ -188,9 +229,24 @@ export default function AppointmentDetail() {
 
               <div style={{ display: 'flex', gap: 10 }}>
                 {currentIdx < STATUS_FLOW.length - 1 && (
-                  <Btn onClick={() => handleStatusUpdate(STATUS_FLOW[currentIdx + 1])} style={{ flex: 1, justifyContent: 'center' }}>
-                    → Move to {STATUS_LABELS[STATUS_FLOW[currentIdx + 1]]}
-                  </Btn>
+                  // ── NEW: if next step is "done" and no prescription, show blocked button ──
+                  STATUS_FLOW[currentIdx + 1] === 'done' && showPrescWarning ? (
+                    <button
+                      onClick={() => setPrescBlockModal(true)}
+                      style={{
+                        flex: 1, padding: '10px 16px', borderRadius: 10,
+                        border: '1.5px solid #F97316', background: '#FFF7ED',
+                        color: '#9A3412', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                        fontFamily: 'DM Sans, sans-serif', textAlign: 'center'
+                      }}
+                    >
+                      🔒 Write Prescription First
+                    </button>
+                  ) : (
+                    <Btn onClick={() => handleStatusUpdate(STATUS_FLOW[currentIdx + 1])} style={{ flex: 1, justifyContent: 'center' }}>
+                      → Move to {STATUS_LABELS[STATUS_FLOW[currentIdx + 1]]}
+                    </Btn>
+                  )
                 )}
                 {appt.status !== 'cancelled' && appt.status !== 'done' && (
                   <Btn variant="danger" onClick={() => handleStatusUpdate('cancelled')} style={{ justifyContent: 'center' }}>
@@ -368,6 +424,46 @@ export default function AppointmentDetail() {
           </Card>
         </div>
       </div>
+
+      {/* ── NEW: Prescription block modal ── */}
+      {prescBlockModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 16, padding: 32,
+            maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center'
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>✍</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>
+              Write Prescription First
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.7, marginBottom: 24 }}>
+              This appointment cannot be marked as <strong>Done</strong> until a prescription has been saved.
+              Please write the prescription for <strong>{appt.patientName}</strong> before closing.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setPrescBlockModal(false)} style={{
+                flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)',
+                background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)'
+              }}>
+                Not Now
+              </button>
+              <button onClick={() => {
+                setPrescBlockModal(false)
+                navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)
+              }} style={{
+                flex: 2, padding: '11px', borderRadius: 10, border: 'none',
+                background: 'var(--teal)', color: 'white', cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif'
+              }}>
+                ✍ Write Prescription Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </Layout>

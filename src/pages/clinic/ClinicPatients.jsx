@@ -25,15 +25,17 @@ export default function ClinicPatients() {
   const [patients, setPatients] = useState([])
   const [search, setSearch]     = useState('')
   const [loading, setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState('marketing') // 'patients' | 'marketing'
+  const [activeTab, setActiveTab] = useState('marketing')
 
   // Marketing tab state
   const [filterTag, setFilterTag]   = useState('')
   const [selected, setSelected]     = useState(new Set())
   const [showWAModal, setShowWAModal] = useState(false)
-  const [waMessage, setWaMessage]   = useState('')
   const [waSending, setWaSending]   = useState(false)
   const [waSentCount, setWaSentCount] = useState(null)
+
+  // ── NEW: template selection state ──
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
 
   useEffect(() => { loadPatients() }, [user])
 
@@ -52,10 +54,16 @@ export default function ClinicPatients() {
     p.phone?.includes(search)
   )
 
-  // Marketing: patients filtered by selected tag
   const tagFiltered = filterTag
     ? patients.filter(p => (p.tags || []).includes(filterTag))
     : patients
+
+  // ── NEW: pull only marketing templates from profile campaigns ──
+  // A campaign is a marketing template if its name includes 'marketing' (case-insensitive)
+  const allCampaigns = profile?.whatsappCampaigns || []
+  const marketingTemplates = allCampaigns.filter(c =>
+    c.name?.toLowerCase().includes('marketing')
+  )
 
   function toggleSelect(id) {
     setSelected(s => {
@@ -73,8 +81,13 @@ export default function ClinicPatients() {
     }
   }
 
+  function openWAModal() {
+    setSelectedTemplate(marketingTemplates.length > 0 ? marketingTemplates[0] : null)
+    setShowWAModal(true)
+  }
+
   async function handleBulkWA() {
-    if (!waMessage.trim() || selected.size === 0) return
+    if (!selectedTemplate || selected.size === 0) return
     setWaSending(true)
     const campaigns = profile?.whatsappCampaigns || []
     let sent = 0
@@ -84,9 +97,9 @@ export default function ClinicPatients() {
       try {
         const result = await sendCampaign(
           campaigns,
-          'marketing_campaign',
+          selectedTemplate.name,
           p.phone,
-          [p.name, waMessage],
+          [p.name],
           null,
           { centreId: user.uid, patientName: p.name }
         )
@@ -96,7 +109,7 @@ export default function ClinicPatients() {
     setWaSending(false)
     setWaSentCount(sent)
     setShowWAModal(false)
-    setWaMessage('')
+    setSelectedTemplate(null)
     setSelected(new Set())
   }
 
@@ -193,6 +206,13 @@ export default function ClinicPatients() {
             </div>
           )}
 
+          {/* ── NEW: no templates warning ── */}
+          {marketingTemplates.length === 0 && (
+            <div style={{ marginBottom: 16, padding: '12px 18px', background: '#FFF7ED', border: '1px solid #F97316', borderRadius: 10, fontSize: 13, color: '#9A3412' }}>
+              ⚠ No marketing templates found. Go to <strong>Settings → WhatsApp Campaigns</strong> and add a campaign with "marketing" in the name, approved by AiSynergy.
+            </div>
+          )}
+
           {/* Tag filter */}
           <Card>
             <CardHeader title="Filter by Tag" />
@@ -225,7 +245,7 @@ export default function ClinicPatients() {
               title={`${filterTag ? TAG_LABELS[filterTag] : 'All'} Patients (${tagFiltered.length})`}
               action={
                 selected.size > 0 && (
-                  <Btn small onClick={() => setShowWAModal(true)}>
+                  <Btn small onClick={openWAModal} disabled={marketingTemplates.length === 0}>
                     📱 Send WhatsApp ({selected.size})
                   </Btn>
                 )
@@ -277,28 +297,73 @@ export default function ClinicPatients() {
         </>
       )}
 
-      {/* ── WA SEND MODAL ── */}
+      {/* ── WA SEND MODAL — template picker ── */}
       {showWAModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: 'white', borderRadius: 16, padding: 28, maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>📱 Send WhatsApp</div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>
+          <div style={{ background: 'white', borderRadius: 16, padding: 28, maxWidth: 480, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>📱 Send WhatsApp Campaign</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
               Sending to <strong>{selected.size} patient{selected.size !== 1 ? 's' : ''}</strong>
               {filterTag ? ` tagged as ${TAG_LABELS[filterTag]}` : ''}
             </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Message</label>
-              <textarea value={waMessage} onChange={e => setWaMessage(e.target.value)}
-                placeholder="e.g. Dear patient, we have a health camp this Sunday…"
-                rows={4} style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', resize: 'vertical', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div style={{ background: '#FFF7ED', border: '1px solid #FDDCBC', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#9A3412', marginBottom: 18 }}>
-              ⚠ Requires <strong>marketing_campaign</strong> template configured in Settings → WhatsApp Campaigns, and approved by AiSynergy.
-            </div>
+
+            {marketingTemplates.length === 0 ? (
+              <div style={{ background: '#FFF7ED', border: '1px solid #F97316', borderRadius: 10, padding: '14px 16px', fontSize: 13, color: '#9A3412', marginBottom: 20 }}>
+                ⚠ No marketing templates configured. Go to <strong>Settings → WhatsApp Campaigns</strong> and add a campaign with "marketing" in the name.
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>
+                    Select Template
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {marketingTemplates.map(t => (
+                      <button
+                        key={t.name}
+                        type="button"
+                        onClick={() => setSelectedTemplate(t)}
+                        style={{
+                          padding: '12px 14px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                          border: `1.5px solid ${selectedTemplate?.name === t.name ? 'var(--teal)' : 'var(--border)'}`,
+                          background: selectedTemplate?.name === t.name ? 'var(--teal-light)' : 'var(--surface)',
+                          fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s'
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>
+                          {selectedTemplate?.name === t.name ? '● ' : '○ '}{t.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                          {t.paramCount ? `${t.paramCount} param${t.paramCount !== 1 ? 's' : ''}` : 'Template'} · Patient name auto-filled as param 1
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedTemplate && (
+                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#166534', marginBottom: 18 }}>
+                    ✓ Template <strong>{selectedTemplate.name}</strong> selected. Patient name will be sent as param 1 automatically.
+                  </div>
+                )}
+              </>
+            )}
+
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowWAModal(false)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)' }}>Cancel</button>
-              <button onClick={handleBulkWA} disabled={!waMessage.trim() || waSending} style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', opacity: (!waMessage.trim() || waSending) ? 0.5 : 1 }}>
+              <button onClick={() => { setShowWAModal(false); setSelectedTemplate(null) }} style={{
+                flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)',
+                background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)'
+              }}>Cancel</button>
+              <button
+                onClick={handleBulkWA}
+                disabled={!selectedTemplate || waSending || marketingTemplates.length === 0}
+                style={{
+                  flex: 2, padding: '11px', borderRadius: 10, border: 'none',
+                  background: 'var(--teal)', color: 'white', cursor: 'pointer',
+                  fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif',
+                  opacity: (!selectedTemplate || waSending || marketingTemplates.length === 0) ? 0.5 : 1
+                }}
+              >
                 {waSending ? 'Sending…' : `Send to ${selected.size} patients`}
               </button>
             </div>
