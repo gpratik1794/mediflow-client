@@ -248,7 +248,7 @@ export default function Appointments() {
     .sort((a, b) => (a.tokenNumber || 0) - (b.tokenNumber || 0))[0] || null
   const pendingFeePatients = appointments.filter(a => a.status === 'done' && a.paymentStatus === 'pending')
 
-  const iStyle = { padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 11, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: 500 }
+  const iStyle = { padding: '6px 14px', borderRadius: 8, border: 'none', fontSize: 13, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: 500 }
 
   // ── Fee cell — shared between table and card view ──
   function FeeCell({ a }) {
@@ -338,10 +338,10 @@ export default function Appointments() {
           </div>
           {/* Name + sub-info */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {a.patientName}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
               {canSeePhone ? a.phone : maskPhone(a.phone)} · {a.age}y · {a.gender}
             </div>
           </div>
@@ -360,7 +360,7 @@ export default function Appointments() {
         </div>
 
         {/* Middle row: time + visit type */}
-        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--slate)' }}>
+        <div style={{ display: 'flex', gap: 16, fontSize: 13, color: 'var(--slate)' }}>
           <span>🕐 {a.appointmentTime}</span>
           <span>· {a.visitType}</span>
         </div>
