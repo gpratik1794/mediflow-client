@@ -2,11 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <title>MediFlow</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+      /* ── Global mobile reset ── */
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      html, body, #root {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+      /* Prevent any fixed-width element from causing horizontal scroll */
+      body {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
