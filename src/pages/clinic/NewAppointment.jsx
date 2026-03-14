@@ -270,11 +270,16 @@ export default function NewAppointment() {
                 )}
                 <div>
                   <label style={lStyle}>Time Slot <span style={{ color: '#DC2626' }}>*</span></label>
-                  {!form.appointmentTime && (
+                  {doctors.length > 0 && !form.doctorName ? (
+                    <div style={{ fontSize: 12, color: '#D97706', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '10px 12px' }}>
+                      ⚠️ Please select a doctor first to see available slots
+                    </div>
+                  ) : !form.appointmentTime ? (
                     <div style={{ fontSize: 11, color: '#D97706', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 7, padding: '6px 10px', marginBottom: 7 }}>
                       ⚠️ Select a slot to enable booking
                     </div>
-                  )}
+                  ) : null}
+                  {(doctors.length === 0 || form.doctorName) && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
                     {TIME_SLOTS.map(slot => {
                       const isBooked = slot !== 'Walk-in (no slot)' && bookedSlots.includes(slot)
@@ -305,6 +310,7 @@ export default function NewAppointment() {
                       )
                     })}
                   </div>
+                  )}
                 </div>
                 <div>
                   <label style={lStyle}>Visit Type</label>
@@ -315,7 +321,7 @@ export default function NewAppointment() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={lStyle}>Fee (₹)</label>
-                    <input type="text" inputMode="numeric" value={form.consultationFee} onChange={e => setForm(f => ({ ...f, consultationFee: e.target.value.replace(/\D/g, '') }))} placeholder="e.g. 300" style={iStyle} />
+                    <input type="text" inputMode="numeric" value={form.consultationFee} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ''); setForm(f => ({ ...f, consultationFee: v })) }} placeholder="e.g. 300" style={iStyle} />
                   </div>
                   <div>
                     <label style={lStyle}>Payment</label>
@@ -341,8 +347,8 @@ export default function NewAppointment() {
                 <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 4 }}>📅 {form.date}</div>
                 <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 4 }}>🕐 {form.appointmentTime}</div>
                 <div style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 16 }}>🏥 {form.visitType}</div>
-                <Btn type="submit" disabled={loading || !form.patientName || !form.phone || !form.appointmentTime} style={{ width: '100%', justifyContent: 'center' }}>
-                  {loading ? 'Booking…' : form.appointmentTime ? '✓ Confirm Booking' : 'Select a time slot to book'}
+                <Btn type="submit" disabled={loading || !form.patientName || !form.phone || !form.appointmentTime || (doctors.length > 0 && !form.doctorName)} style={{ width: '100%', justifyContent: 'center' }}>
+                  {loading ? 'Booking…' : (doctors.length > 0 && !form.doctorName) ? 'Select a doctor first' : form.appointmentTime ? '✓ Confirm Booking' : 'Select a time slot to book'}
                 </Btn>
                 <Btn variant="ghost" onClick={() => navigate(-1)} style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>Cancel</Btn>
               </div>
