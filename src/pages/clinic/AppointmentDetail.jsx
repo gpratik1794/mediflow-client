@@ -32,6 +32,8 @@ function maskPhone(phone) {
 export default function AppointmentDetail() {
   const { id } = useParams()
   const { user, profile } = useAuth()
+  // For staff, use _centreId from profile; for owner, use user.uid
+  const centreId = profile?._centreId || user?.uid
   const navigate = useNavigate()
   const [appt, setAppt]         = useState(null)
   const [prescriptions, setPresc] = useState([])
@@ -49,7 +51,7 @@ export default function AppointmentDetail() {
   async function loadData() {
     setLoading(true)
     try {
-      const snap = await getDoc(doc(db, 'centres', user.uid, 'appointments', id))
+      const snap = await getDoc(doc(db, 'centres', centreId, 'appointments', id))
       if (snap.exists()) {
         const data = { id: snap.id, ...snap.data() }
         setAppt(data)
@@ -59,7 +61,7 @@ export default function AppointmentDetail() {
         setPaymentStatus(data.paymentStatus || 'pending')
         // Load prescriptions — wrapped separately so a missing index doesn't block loading
         try {
-          const presc = await getPrescriptions(user.uid, data.phone)
+          const presc = await getPrescriptions(centreId, data.phone)
           setPresc(presc)
         } catch (e) {
           console.warn('[Prescriptions] Index may be missing:', e)
@@ -77,7 +79,7 @@ export default function AppointmentDetail() {
         const penalty = parseInt(profile?.lateCheckinPenalty || '0')
         if (penalty > 0) {
           try {
-            const allToday = await getAppointments(user.uid, appt.date)
+            const allToday = await getAppointments(centreId, appt.date)
             // Only count patients who actually checked in (waiting/in-consultation/done)
             // Scheduled patients who haven't arrived don't count against late patient
             const checkedIn = allToday.filter(a =>
@@ -92,7 +94,7 @@ export default function AppointmentDetail() {
                 ? Math.max(...checkedIn.map(a => a.tokenNumber))
                 : appt.tokenNumber
               const newPosition = maxToken + penalty
-              await updateAppointment(user.uid, id, {
+              await updateAppointment(centreId, id, {
                 status: 'waiting', tokenNumber: newPosition,
                 lateCheckin: true, originalToken: appt.tokenNumber
               })
@@ -105,9 +107,9 @@ export default function AppointmentDetail() {
           }
         }
       }
-      await updateAppointment(user.uid, id, { status: newStatus })
+      await updateAppointment(centreId, id, { status: newStatus })
     const labelMap = { done: 'Appointment Done', cancelled: 'Appointment Cancelled', 'in-consultation': 'In Consultation', waiting: 'Waiting' }
-    logActivity(user.uid, { action: 'appt_status_changed', label: labelMap[newStatus] || 'Status Changed', detail: appt?.patientName || id, by: user?.email || '' })
+    logActivity(centreId, { action: 'appt_status_changed', label: labelMap[newStatus] || 'Status Changed', detail: appt?.patientName || id, by: user?.email || '' })
       setAppt(a => ({ ...a, status: newStatus }))
       setToast({ message: `Status → ${STATUS_LABELS[newStatus]}`, type: 'success' })
     } catch (e) {
@@ -117,14 +119,14 @@ export default function AppointmentDetail() {
 
   async function handleSaveVitals() {
     setSavingVitals(true)
-    await updateAppointment(user.uid, id, { vitals, clinicalNotes: notes })
+    await updateAppointment(centreId, id, { vitals, clinicalNotes: notes })
     setToast({ message: 'Vitals & notes saved', type: 'success' })
     setSavingVitals(false)
   }
 
   async function handleSaveFee() {
     setSavingFee(true)
-    await updateAppointment(user.uid, id, { consultationFee: fee, paymentStatus })
+    await updateAppointment(centreId, id, { consultationFee: fee, paymentStatus })
     setAppt(a => ({ ...a, consultationFee: fee, paymentStatus }))
     setToast({ message: 'Fee updated', type: 'success' })
     setSavingFee(false)
@@ -360,7 +362,7 @@ export default function AppointmentDetail() {
           {/* WhatsApp Activity */}
           <Card>
             <CardHeader title="WhatsApp Activity" sub="Sent messages & patient replies" />
-            <WhatsAppLog centreId={user?.uid} apptId={id} />
+            <WhatsAppLog centreId={centreId} apptId={id} />
           </Card>
         </div>
       </div>

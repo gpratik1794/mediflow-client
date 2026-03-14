@@ -26,6 +26,8 @@ function maskPhone(phone) {
 
 export default function Appointments() {
   const { user, profile } = useAuth()
+  // For staff, use _centreId from profile; for owner, use user.uid
+  const centreId = profile?._centreId || user?.uid
   const navigate = useNavigate()
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading]           = useState(true)
@@ -45,7 +47,7 @@ export default function Appointments() {
     if (!user) return
     setLoading(true)
     if (unsubRef.current) unsubRef.current()
-    unsubRef.current = subscribeToAppointments(user.uid, viewDate, data => {
+    unsubRef.current = subscribeToAppointments(centreId, viewDate, data => {
       setAppointments(data)
       setLoading(false)
     })
@@ -53,17 +55,17 @@ export default function Appointments() {
   }, [user, viewDate])
 
   async function load() {
-    const data = await getAppointments(user.uid, viewDate)
+    const data = await getAppointments(centreId, viewDate)
     setAppointments(data)
   }
 
   async function quickStatus(e, apptId, status) {
     e.stopPropagation()
-    await updateAppointment(user.uid, apptId, { status })
+    await updateAppointment(centreId, apptId, { status })
     setAppointments(a => a.map(x => x.id === apptId ? { ...x, status } : x))
     const appt = appointments.find(x => x.id === apptId)
     const labelMap = { waiting: 'Marked Waiting', 'in-consultation': 'Marked In Consultation', done: 'Marked Done', cancelled: 'Appointment Cancelled', scheduled: 'Marked Scheduled' }
-    logActivity(user.uid, { action: 'appt_status_changed', label: labelMap[status] || 'Status Changed', detail: appt?.patientName || apptId, by: user?.email || '' })
+    logActivity(centreId, { action: 'appt_status_changed', label: labelMap[status] || 'Status Changed', detail: appt?.patientName || apptId, by: user?.email || '' })
   }
 
   // ── Session helpers ──
@@ -156,7 +158,7 @@ export default function Appointments() {
         sendCampaign(profile.whatsappCampaigns, 'doctor_session_report',
           doctorPhone,
           [doctorName, sessLabel, dateLabel, String(s.total), String(s.newV), String(s.followUp), `₹${s.collection}`, `₹${s.pending}`],
-          null, { centreId: user.uid }
+          null, { centreId: centreId }
         )
       }
 
@@ -165,13 +167,13 @@ export default function Appointments() {
         sendCampaign(profile.whatsappCampaigns, 'doctor_session_report',
           profile.fallbackNotifyNumber,
           [doctorName, sessLabel, dateLabel, String(s.total), String(s.newV), String(s.followUp), `₹${s.collection}`, `₹${s.pending}`],
-          null, { centreId: user.uid }
+          null, { centreId: centreId }
         )
       }
 
       // Auto-save session report to Firestore
       try {
-        await saveSessionReport(user.uid, {
+        await saveSessionReport(centreId, {
           date: today,
           session: endSession,
           doctorName: profile?.doctors?.[0]?.name || 'Doctor',

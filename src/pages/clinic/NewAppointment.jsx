@@ -39,6 +39,7 @@ const lStyle = { fontSize: 11, color: 'var(--slate)', fontWeight: 500, display: 
 
 export default function NewAppointment() {
   const { user, profile } = useAuth()
+  const centreId = profile?._centreId || user?.uid
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [loading, setLoading]             = useState(false)
@@ -60,7 +61,7 @@ export default function NewAppointment() {
   useEffect(() => { if (form.phone?.length === 10) doSearch(form.phone) }, [])
   useEffect(() => {
     if (!user) return
-    getAppointments(user.uid, form.date).then(ex =>
+    getAppointments(centreId, form.date).then(ex =>
       setBookedSlots(
         ex
           .filter(a => a.status !== 'cancelled')
@@ -79,7 +80,7 @@ export default function NewAppointment() {
   async function doSearch(phone) {
     setSearching(true)
     try {
-      const results = await searchPatients(user.uid, phone)
+      const results = await searchPatients(centreId, phone)
       if (results.length === 1) { fillPatient(results[0]) }
       else setSearchResults(results)
     } catch (e) { console.error(e) }
@@ -113,7 +114,7 @@ export default function NewAppointment() {
     if (submittingRef.current) return
     submittingRef.current = true
     if (form.appointmentTime !== 'Walk-in (no slot)') {
-      const ex = await getAppointments(user.uid, form.date)
+      const ex = await getAppointments(centreId, form.date)
       const conflict = ex.find(a => {
         if (a.appointmentTime !== form.appointmentTime || a.status === 'cancelled') return false
         if (a.doctorName && form.doctorName) return a.doctorName === form.doctorName
@@ -136,14 +137,14 @@ export default function NewAppointment() {
         : EVENING_SLOTS.includes(form.appointmentTime)
           ? 'evening'
           : currentMins < 14 * 60 ? 'morning' : 'evening'
-      const tokenNumber = await getNextToken(user.uid, form.date, slotSession)
-      const apptId = await createAppointment(user.uid, { ...form, tokenNumber, session: slotSession, status: 'scheduled' })
-      logActivity(user.uid, { action: 'appt_created', label: 'Appointment Created', detail: `${form.patientName} · ${form.appointmentTime || 'Walk-in'} · Token #${tokenNumber}`, by: user?.email || '' })
-      await upsertClinicPatient(user.uid, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
+      const tokenNumber = await getNextToken(centreId, form.date, slotSession)
+      const apptId = await createAppointment(centreId, { ...form, tokenNumber, session: slotSession, status: 'scheduled' })
+      logActivity(centreId, { action: 'appt_created', label: 'Appointment Created', detail: `${form.patientName} · ${form.appointmentTime || 'Walk-in'} · Token #${tokenNumber}`, by: user?.email || '' })
+      await upsertClinicPatient(centreId, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
       if (profile?.whatsappCampaigns?.length) {
         sendCampaign(profile.whatsappCampaigns, 'appt_confirm', form.phone,
           [form.patientName, profile?.ownerName || 'Doctor', form.date, form.appointmentTime],
-          null, { centreId: user.uid, patientName: form.patientName, apptId })
+          null, { centreId: centreId, patientName: form.patientName, apptId })
       }
       setToast({ message: `Token #${tokenNumber} booked!`, type: 'success' })
       setTimeout(() => navigate(`/clinic/appointments/${apptId}`), 1200)
@@ -218,7 +219,7 @@ export default function NewAppointment() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={lStyle}>Age (years) <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none' }}>override if DOB unknown</span></label>
-                    <input type="number" value={form.age} onChange={setF('age')}
+                    <input type="text" inputMode="numeric" value={form.age} onChange={setF('age')}
                       placeholder="e.g. 32" min="0" max="150" style={iStyle} />
                   </div>
                   <div>
@@ -314,7 +315,7 @@ export default function NewAppointment() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={lStyle}>Fee (₹)</label>
-                    <input type="number" value={form.consultationFee} onChange={setF('consultationFee')} placeholder="e.g. 300" style={iStyle} />
+                    <input type="text" inputMode="numeric" value={form.consultationFee} onChange={e => setForm(f => ({ ...f, consultationFee: e.target.value.replace(/\D/g, '') }))} placeholder="e.g. 300" style={iStyle} />
                   </div>
                   <div>
                     <label style={lStyle}>Payment</label>
