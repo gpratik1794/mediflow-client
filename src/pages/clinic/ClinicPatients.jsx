@@ -102,16 +102,48 @@ export default function ClinicPatients() {
     return parsed?.paramCount || 1
   }
 
-  // Build params array: slot 1 = patient name, slot 2+ = customParams typed by doctor
-  function buildParams(patientName, paramCount) {
-    const arr = [patientName]
+  // ── Auto-resolve known MediFlow variables from profile ──
+  // These are filled automatically — doctor never needs to type them
+  const AUTO_RESOLVE = {
+    centreName:  profile?.centreName || '',
+    doctorName:  profile?.doctors?.[0]?.name || '',
+  }
+
+  function isAutoResolvable(variable) {
+    if (!variable || variable === '__custom__') return false
+    return variable in AUTO_RESOLVE
+  }
+
+  function resolveSlot(slot, patientName) {
+    if (slot === 1) return patientName
+    const variable = selectedTemplate?.paramMapping?.[slot - 1]
+    if (variable === 'patientName') return patientName
+    if (variable && isAutoResolvable(variable)) return AUTO_RESOLVE[variable]
+    return customParams[slot] || ''
+  }
+
+  // Which slots need manual input from the doctor?
+  function getManualSlots(template) {
+    if (!template) return []
+    const paramCount = getParamCount(template)
+    const manual = []
     for (let i = 2; i <= paramCount; i++) {
-      arr.push(customParams[i] || '')
+      const variable = template.paramMapping?.[i - 1]
+      if (!isAutoResolvable(variable) && variable !== 'patientName') {
+        manual.push({ slot: i, variable })
+      }
+    }
+    return manual
+  }
+
+  function buildParams(patientName, paramCount) {
+    const arr = []
+    for (let i = 1; i <= paramCount; i++) {
+      arr.push(resolveSlot(i, patientName))
     }
     return arr
   }
 
-  // Preview params use placeholder name so doctor can see the full message
   function buildPreviewParams(paramCount) {
     return buildParams('Patient Name', paramCount)
   }
@@ -158,10 +190,11 @@ export default function ClinicPatients() {
 
     const paramCount = getParamCount(selectedTemplate)
 
-    // Validate all custom params are filled
-    for (let i = 2; i <= paramCount; i++) {
-      if (!customParams[i]?.trim()) {
-        setWaError(`Please fill in Param {{${i}}} before sending.`)
+    // Validate only manual (non-auto-resolvable) params are filled
+    const manualSlots = getManualSlots(selectedTemplate)
+    for (const { slot } of manualSlots) {
+      if (!customParams[slot]?.trim()) {
+        setWaError(`Please fill in {{${slot}}} before sending.`)
         return
       }
     }
@@ -455,39 +488,65 @@ export default function ClinicPatients() {
                   </div>
                 </div>
 
-                {/* Custom params — slots 2, 3, 4... typed by doctor */}
+                {/* Manual params — only slots that are NOT auto-resolvable */}
                 {selectedTemplate && (() => {
-                  const paramCount = getParamCount(selectedTemplate)
-                  if (paramCount <= 1) return null
+                  const manualSlots = getManualSlots(selectedTemplate)
+                  const autoSlots = (() => {
+                    const paramCount = getParamCount(selectedTemplate)
+                    const auto = []
+                    for (let i = 2; i <= paramCount; i++) {
+                      const variable = selectedTemplate.paramMapping?.[i - 1]
+                      if (isAutoResolvable(variable) || variable === 'patientName') {
+                        auto.push({ slot: i, variable, value: variable === 'patientName' ? 'patient name' : AUTO_RESOLVE[variable] })
+                      }
+                    }
+                    return auto
+                  })()
+
                   return (
-                    <div style={{ marginBottom: 16 }}>
-                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>
-                        Campaign Details — same for all patients
-                      </label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {Array.from({ length: paramCount - 1 }, (_, i) => {
-                          const slot = i + 2
-                          const mappingLabel = selectedTemplate.paramMapping?.[slot - 1]
-                          const showLabel = mappingLabel && mappingLabel !== '__custom__' && mappingLabel !== ''
-                          return (
-                            <div key={slot}>
-                              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                                {`{{${slot}}}`}{showLabel ? ` — ${mappingLabel}` : ''}
-                              </label>
-                              <input
-                                type="text"
-                                value={customParams[slot] || ''}
-                                onChange={e => setCustomParams(cp => ({ ...cp, [slot]: e.target.value }))}
-                                placeholder={slot === 2 ? 'e.g. 18/3/2026 or Free Diabetes Camp' : `Enter value for param ${slot}`}
-                                style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box', transition: 'border 0.18s' }}
-                                onFocus={e => e.target.style.borderColor = 'var(--teal)'}
-                                onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                              />
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
+                    <>
+                      {/* Show auto-resolved slots as read-only info */}
+                      {autoSlots.length > 0 && (
+                        <div style={{ marginBottom: 12, background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 10, padding: '10px 14px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#166534', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Auto-filled</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {autoSlots.map(({ slot, variable, value }) => (
+                              <div key={slot} style={{ fontSize: 12, color: '#166534' }}>
+                                <code style={{ background: '#DCFCE7', padding: '1px 5px', borderRadius: 4 }}>{`{{${slot}}}`}</code>
+                                {' '}= <strong>{variable}</strong> → "{value}"
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Only show input fields for truly manual slots */}
+                      {manualSlots.length > 0 && (
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>
+                            Campaign Details — same for all patients
+                          </label>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {manualSlots.map(({ slot, variable }) => (
+                              <div key={slot}>
+                                <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                                  {`{{${slot}}}`}{variable && variable !== '__custom__' ? ` — ${variable}` : ''}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={customParams[slot] || ''}
+                                  onChange={e => setCustomParams(cp => ({ ...cp, [slot]: e.target.value }))}
+                                  placeholder={`e.g. ${slot === 2 ? '18/3/2026 or Free Diabetes Camp' : `Value for param ${slot}`}`}
+                                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box', transition: 'border 0.18s' }}
+                                  onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )
                 })()}
 
