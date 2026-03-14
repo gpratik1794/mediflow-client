@@ -1,6 +1,8 @@
 // src/components/UI.jsx
 import React from 'react'
 
+const isMobile = () => window.innerWidth < 768
+
 /* ── BUTTON ─────────────────────────────────────────────── */
 export function Btn({ children, variant='primary', onClick, type='button', style, disabled, small }) {
   const base = {
@@ -102,17 +104,28 @@ export function Card({ children, style, className }) {
   )
 }
 
+/* ── CARD HEADER — stacks vertically on mobile ──────────── */
 export function CardHeader({ title, sub, action }) {
+  const mobile = isMobile()
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '18px 22px', borderBottom: '1px solid var(--border)'
+      display: 'flex',
+      flexDirection: mobile && action ? 'column' : 'row',
+      alignItems: mobile && action ? 'flex-start' : 'center',
+      justifyContent: 'space-between',
+      gap: mobile && action ? 12 : 0,
+      padding: mobile ? '14px 16px' : '18px 22px',
+      borderBottom: '1px solid var(--border)',
     }}>
-      <div>
+      <div style={{ flexShrink: 0 }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--navy)' }}>{title}</div>
         {sub && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{sub}</div>}
       </div>
-      {action}
+      {action && (
+        <div style={{ width: mobile ? '100%' : 'auto' }}>
+          {action}
+        </div>
+      )}
     </div>
   )
 }
@@ -120,17 +133,23 @@ export function CardHeader({ title, sub, action }) {
 /* ── MODAL ──────────────────────────────────────────────── */
 export function Modal({ open, onClose, title, sub, children, width=480 }) {
   if (!open) return null
+  const mobile = isMobile()
   return (
     <div className="fade-in" onClick={e => e.target === e.currentTarget && onClose()}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.45)',
-        backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', zIndex: 200
+        backdropFilter: 'blur(4px)', display: 'flex',
+        alignItems: mobile ? 'flex-end' : 'center',
+        justifyContent: 'center', zIndex: 200,
       }}>
       <div className="fade-up" style={{
-        background: 'var(--surface)', borderRadius: 18, padding: 28,
-        width, maxWidth: '95vw', boxShadow: 'var(--shadow-lg)',
-        maxHeight: '90vh', overflowY: 'auto'
+        background: 'var(--surface)',
+        borderRadius: mobile ? '18px 18px 0 0' : 18,
+        padding: mobile ? '24px 20px 32px' : 28,
+        width: mobile ? '100%' : width,
+        maxWidth: '100%',
+        boxShadow: 'var(--shadow-lg)',
+        maxHeight: '90vh', overflowY: 'auto',
       }}>
         <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--navy)', marginBottom: 4 }}>{title}</div>
         {sub && <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 22 }}>{sub}</div>}
@@ -151,28 +170,28 @@ export function StatCard({ icon, label, value, delta, deltaUp, color='teal' }) {
   const c = colors[color]
   return (
     <div className="fade-up" style={{
-      background: 'var(--surface)', borderRadius: 'var(--radius)', padding: '20px 22px',
-      boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', gap: 16,
-      transition: 'transform 0.18s, box-shadow 0.18s', cursor: 'default'
+      background: 'var(--surface)', borderRadius: 'var(--radius)', padding: '16px 18px',
+      boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', gap: 14,
+      transition: 'transform 0.18s, box-shadow 0.18s', cursor: 'default',
     }}
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-lg)' }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow)' }}
     >
       <div style={{
-        width: 46, height: 46, borderRadius: 12, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', background: c.bg, color: c.fg, flexShrink: 0, fontSize: 20
+        width: 42, height: 42, borderRadius: 12, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', background: c.bg, color: c.fg, flexShrink: 0, fontSize: 18,
       }}>
         {icon}
       </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 26, fontWeight: 600, color: 'var(--navy)', lineHeight: 1 }}>{value}</div>
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>{label}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--navy)', lineHeight: 1 }}>{value}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>{label}</div>
       </div>
       {delta && (
         <div style={{
           fontSize: 11, fontWeight: 500, padding: '3px 8px', borderRadius: 20, alignSelf: 'flex-start',
           background: deltaUp ? 'var(--green-bg)' : 'var(--red-bg)',
-          color: deltaUp ? 'var(--green)' : 'var(--red)'
+          color: deltaUp ? 'var(--green)' : 'var(--red)',
         }}>
           {deltaUp ? '↑' : '↓'} {delta}
         </div>
@@ -185,13 +204,18 @@ export function StatCard({ icon, label, value, delta, deltaUp, color='teal' }) {
 export function Toast({ message, type='success', onClose }) {
   React.useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [])
   const colors = { success: 'var(--green)', error: 'var(--red)', info: 'var(--teal)' }
+  const mobile = isMobile()
   return (
     <div style={{
-      position: 'fixed', bottom: 24, right: 24, zIndex: 999,
+      position: 'fixed',
+      bottom: mobile ? 16 : 24,
+      right: mobile ? 16 : 24,
+      left: mobile ? 16 : 'auto',
+      zIndex: 999,
       background: 'var(--navy)', color: '#fff', padding: '12px 20px',
       borderRadius: 12, fontSize: 13, fontWeight: 500,
       display: 'flex', alignItems: 'center', gap: 10, boxShadow: 'var(--shadow-lg)',
-      borderLeft: `4px solid ${colors[type]}`, animation: 'fadeUp 0.3s ease'
+      borderLeft: `4px solid ${colors[type]}`, animation: 'fadeUp 0.3s ease',
     }}>
       {type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'} {message}
     </div>
@@ -204,7 +228,7 @@ export function Spinner({ size=24 }) {
     <div style={{
       width: size, height: size, borderRadius: '50%',
       border: `3px solid var(--border)`, borderTopColor: 'var(--teal)',
-      animation: 'spin 0.7s linear infinite'
+      animation: 'spin 0.7s linear infinite',
     }} />
   )
 }
