@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Empty } from '../../components/UI'
-import { getAppointments, updateAppointment, saveSessionReport, subscribeToAppointments, logActivity } from '../../firebase/clinicDb'
+import { getAppointments, updateAppointment, saveSessionReport, subscribeToAppointments, logActivity, getSessionFromTime } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { format } from 'date-fns'
 
@@ -67,6 +67,56 @@ export default function Appointments() {
   async function load() {
     const data = await getAppointments(centreId, viewDate)
     setAppointments(data)
+  }
+
+  // ── Re-assign tokens for today based on slot time position ──
+  // Run this once to fix old appointments booked before the token fix
+  async function reTokenizeToday() {
+    const appts = await getAppointments(centreId, viewDate)
+    const nonCancelled = appts.filter(a => a.status !== 'cancelled')
+
+    // Group by session
+    const sessions = { morning: [], evening: [], walkin: [] }
+    nonCancelled.forEach(a => {
+      if (!a.appointmentTime || a.appointmentTime === 'Walk-in (no slot)') {
+        sessions.walkin.push(a)
+      } else {
+        const sess = a.session || getSessionFromTime(a.appointmentTime)
+        if (sess === 'morning') sessions.morning.push(a)
+        else sessions.evening.push(a)
+      }
+    })
+
+    const toMins = t => {
+      if (!t) return 9999
+      const parts = t.trim().split(' ')
+      let h = Number(parts[0].split(':')[0])
+      const min = Number(parts[0].split(':')[1] || 0)
+      if (parts[1] === 'PM' && h !== 12) h += 12
+      if (parts[1] === 'AM' && h === 12) h = 0
+      return h * 60 + min
+    }
+
+    let updates = []
+    // Morning: sort by slot time, assign tokens 1, 2, 3...
+    const mSorted = [...sessions.morning].sort((a, b) => toMins(a.appointmentTime) - toMins(b.appointmentTime))
+    mSorted.forEach((a, i) => { if (a.tokenNumber !== i + 1) updates.push({ id: a.id, tokenNumber: i + 1 }) })
+
+    // Evening: sort by slot time, assign tokens 1, 2, 3... (independent counter)
+    const eSorted = [...sessions.evening].sort((a, b) => toMins(a.appointmentTime) - toMins(b.appointmentTime))
+    eSorted.forEach((a, i) => { if (a.tokenNumber !== i + 1) updates.push({ id: a.id, tokenNumber: i + 1 }) })
+
+    // Walk-ins: append after
+    const wOffset = Math.max(mSorted.length, eSorted.length)
+    sessions.walkin.forEach((a, i) => { if (a.tokenNumber !== wOffset + i + 1) updates.push({ id: a.id, tokenNumber: wOffset + i + 1 }) })
+
+    if (updates.length === 0) {
+      alert('Tokens are already correct — no changes needed.')
+      return
+    }
+    await Promise.all(updates.map(u => updateAppointment(centreId, u.id, { tokenNumber: u.tokenNumber })))
+    await load()
+    alert(`✓ Re-assigned tokens for ${updates.length} appointment${updates.length !== 1 ? 's' : ''}.`)
   }
 
   async function quickStatus(e, apptId, status) {
@@ -242,7 +292,16 @@ export default function Appointments() {
             <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600 }}>✓ Report sent</span>
           )}
           {!isReceptionist && (
-            <Btn onClick={() => navigate('/clinic/appointments/new')}>+ Book Appointment</Btn>
+            <>
+              {isToday && (
+                <button onClick={reTokenizeToday}
+                  title="Re-assign token numbers based on slot time (fixes old appointments)"
+                  style={{ padding: '7px 12px', borderRadius: 9, border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                  🔢 Fix Tokens
+                </button>
+              )}
+              <Btn onClick={() => navigate('/clinic/appointments/new')}>+ Book Appointment</Btn>
+            </>
           )}
         </div>
       }
@@ -365,9 +424,18 @@ export default function Appointments() {
                     <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{a.appointmentTime}</td>
                     <td style={{ padding: '12px 18px', fontSize: 12, color: 'var(--muted)' }}>{a.visitType}</td>
                     <td style={{ padding: '12px 18px' }}>
-                      <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: sc.bg, color: sc.color }}>
-                        {sc.label}
-                      </span>
+                      {canCallIn && a.status === 'waiting' ? (
+                        <span
+                          onClick={e => quickStatus(e, a.id, 'in-consultation')}
+                          title="Click to call in"
+                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: sc.bg, color: sc.color, cursor: 'pointer', border: '1.5px solid var(--amber)', display: 'inline-block' }}>
+                          {sc.label} →
+                        </span>
+                      ) : (
+                        <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: sc.bg, color: sc.color }}>
+                          {sc.label}
+                        </span>
+                      )}
                     </td>
 
                     {/* ── Role-split action column ── */}
