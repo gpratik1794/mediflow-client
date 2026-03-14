@@ -44,10 +44,19 @@ function PublicOnly({ children }) {
   return user ? <Navigate to="/" replace /> : children
 }
 
+// ── Guard: redirect to /clinic if marketing module is disabled ──
+function MarketingGuard({ children }) {
+  const { profile, loading } = useAuth()
+  if (loading || !profile) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'DM Sans, sans-serif', color: '#8FA3AE' }}>Loading…</div>
+  )
+  if (!profile?.modules?.marketing) return <Navigate to="/clinic" replace />
+  return children
+}
+
 // Smart root redirect — clinic users go to /clinic, diagnostic to /
 function RootRedirect() {
   const { profile, loading } = useAuth()
-  // Wait for BOTH loading AND profile before deciding route
   if (loading || !profile) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'DM Sans, sans-serif', color: '#8FA3AE' }}>Loading…</div>
   )
@@ -77,16 +86,26 @@ function AppRoutes() {
 
       {/* Clinic routes */}
       <Route path="/clinic"                       element={<Protected><ClinicDashboard /></Protected>} />
-      <Route path="/clinic/patients"              element={<Protected><ClinicPatients /></Protected>} />
-      <Route path="/clinic/vaccination"           element={<Protected><Vaccination /></Protected>} />
-      <Route path="/clinic/vaccination/:id"       element={<Protected><VaccinationDetail /></Protected>} />
       <Route path="/clinic/appointments"          element={<Protected><Appointments /></Protected>} />
       <Route path="/clinic/appointments/new"      element={<Protected><NewAppointment /></Protected>} />
       <Route path="/clinic/appointments/:id"      element={<Protected><AppointmentDetail /></Protected>} />
       <Route path="/clinic/prescription/new"      element={<Protected><PrescriptionWriter /></Protected>} />
       <Route path="/clinic/prescription/:id"      element={<Protected><PrescriptionDetail /></Protected>} />
       <Route path="/clinic/followups"             element={<Protected><FollowUps /></Protected>} />
-      <Route path="/clinic/reports"              element={<Protected><ClinicReports /></Protected>} />
+      <Route path="/clinic/reports"               element={<Protected><ClinicReports /></Protected>} />
+      <Route path="/clinic/vaccination"           element={<Protected><Vaccination /></Protected>} />
+      <Route path="/clinic/vaccination/:id"       element={<Protected><VaccinationDetail /></Protected>} />
+
+      {/* ── Marketing: guarded by modules.marketing ── */}
+      <Route path="/clinic/patients"
+        element={
+          <Protected>
+            <MarketingGuard>
+              <ClinicPatients />
+            </MarketingGuard>
+          </Protected>
+        }
+      />
 
       {/* Public booking — no auth required */}
       <Route path="/book/:centreId"    element={<BookAppointment />} />

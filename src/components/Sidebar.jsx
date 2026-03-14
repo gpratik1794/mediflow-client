@@ -29,6 +29,9 @@ function buildBothNav(modules) {
   if (modules?.vaccination) {
     nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
   }
+  if (modules?.marketing) {
+    nav.push({ to: '/clinic/patients', label: 'Marketing', icon: '📣' })
+  }
   nav.push(
     { to: '/clinic/reports', label: 'Reports', icon: '📊' },
     { section: 'Diagnostic' },
@@ -51,7 +54,6 @@ export default function Sidebar() {
   const centreType = profile?.centreType || 'diagnostic'
   const modules    = profile?.modules || {}
   const isReceptionist = role === 'receptionist'
-  // staffPermissions stored on the staffUsers record by the clinic owner
   const permissions = userRecord?.permissions || {}
 
   function buildClinicNav(modules) {
@@ -60,13 +62,21 @@ export default function Sidebar() {
       { to: '/clinic', label: 'Dashboard', icon: '▦' },
       { section: 'Patients' },
       { to: '/clinic/appointments', label: 'Appointments', icon: '📅' },
-      ...((!isReceptionist || permissions.showMarketing) ? [{ to: '/clinic/patients', label: 'Marketing', icon: '📣' }] : []),
-      ...((!isReceptionist || permissions.showFollowups !== false) ? [{ to: '/clinic/followups', label: 'Follow-ups', icon: '🔔' }] : []),
     ]
+
+    // ── Marketing: requires BOTH module enabled AND (owner OR receptionist with showMarketing permission) ──
+    if (modules?.marketing && (!isReceptionist || permissions.showMarketing)) {
+      nav.push({ to: '/clinic/patients', label: 'Marketing', icon: '📣' })
+    }
+
+    if (!isReceptionist || permissions.showFollowups !== false) {
+      nav.push({ to: '/clinic/followups', label: 'Follow-ups', icon: '🔔' })
+    }
+
     if (modules?.vaccination) {
       nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
     }
-    // Receptionist cannot see Prescription or Reports
+
     if (!isReceptionist) {
       nav.push(
         { section: 'Doctor' },
@@ -121,7 +131,7 @@ export default function Sidebar() {
             <div key={i} style={{ fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 12px 4px', fontWeight: 500 }}>{item.section}</div>
           )
           return (
-            <NavLink key={item.to} to={item.to}
+            <NavLink key={item.to + i} to={item.to}
               end={item.to === '/' || item.to === '/clinic'}
               style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: 10,
