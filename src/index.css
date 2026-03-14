@@ -23,6 +23,12 @@
   --sidebar-w:  240px;
 }
 
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
@@ -54,3 +60,10 @@ a { text-decoration: none; color: inherit; }
 ::placeholder { color: #B0BEC5; opacity: 1; }
 ::-webkit-input-placeholder { color: #B0BEC5; }
 ::-moz-placeholder { color: #B0BEC5; opacity: 1; }
+
+/* ── Mobile overrides ── */
+@media (max-width: 767px) {
+  :root {
+    --sidebar-w: 0px;
+  }
+}
