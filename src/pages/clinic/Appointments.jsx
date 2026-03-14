@@ -25,9 +25,11 @@ function maskPhone(phone) {
 }
 
 export default function Appointments() {
-  const { user, profile } = useAuth()
+  const { user, profile, role, userRecord } = useAuth()
   // For staff, use _centreId from profile; for owner, use user.uid
   const centreId = profile?._centreId || user?.uid
+  // Phone visible to owner always; staff only if showPhone permission is on
+  const canSeePhone = !role || userRecord?.permissions?.showPhone === true
   const navigate = useNavigate()
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading]           = useState(true)
@@ -320,7 +322,7 @@ export default function Appointments() {
                     </td>
                     <td style={{ padding: '12px 18px' }}>
                       <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--navy)' }}>{a.patientName}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{maskPhone(a.phone)} · {a.age}y · {a.gender}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{canSeePhone ? a.phone : maskPhone(a.phone)} · {a.age}y · {a.gender}</div>
                     </td>
                     <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{a.appointmentTime}</td>
                     <td style={{ padding: '12px 18px', fontSize: 12, color: 'var(--muted)' }}>{a.visitType}</td>

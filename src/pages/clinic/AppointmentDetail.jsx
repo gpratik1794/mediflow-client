@@ -31,9 +31,11 @@ function maskPhone(phone) {
 
 export default function AppointmentDetail() {
   const { id } = useParams()
-  const { user, profile } = useAuth()
+  const { user, profile, role, userRecord } = useAuth()
   // For staff, use _centreId from profile; for owner, use user.uid
   const centreId = profile?._centreId || user?.uid
+  // Phone visible to owner always; staff only if showPhone permission is on
+  const canSeePhone = !role || userRecord?.permissions?.showPhone === true
   const navigate = useNavigate()
   const [appt, setAppt]         = useState(null)
   const [prescriptions, setPresc] = useState([])
@@ -275,7 +277,7 @@ export default function AppointmentDetail() {
               </div>
               {[
                 ['Name', appt.patientName],
-                ['Phone', maskPhone(appt.phone)],
+                ['Phone', canSeePhone ? appt.phone : maskPhone(appt.phone)],
                 ['Age / Gender', `${appt.age}y · ${appt.gender}`],
                 ['Visit Type', appt.visitType],
                 ['Token', `#${appt.tokenNumber}`],

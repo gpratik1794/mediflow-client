@@ -1901,10 +1901,13 @@ export default function Settings() {
                           <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Permissions:</span>
                             {[
-                              { key: 'showMarketing', label: 'Marketing tab' },
-                              { key: 'showFollowups', label: 'Follow-ups tab' },
+                              { key: 'showMarketing', label: 'Marketing tab', default: true },
+                              { key: 'showFollowups', label: 'Follow-ups tab', default: true },
+                              { key: 'showPhone',     label: 'See full phone numbers', default: false },
                             ].map(perm => {
-                              const isOn = s.permissions?.[perm.key] !== false
+                              const isOn = perm.default
+                                ? s.permissions?.[perm.key] !== false
+                                : s.permissions?.[perm.key] === true
                               return (
                                 <label key={perm.key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--slate)' }}>
                                   <div onClick={() => handleUpdatePermission(s.id, perm.key, !isOn)}
