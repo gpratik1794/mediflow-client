@@ -6,7 +6,7 @@ import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Empty } from '../../components/UI'
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase/config'
-import { sendCampaign } from '../../firebase/whatsapp'
+import { parseCurl } from '../../firebase/whatsapp'
 
 const TAG_LABELS = { diabetes:'Diabetes', hypert:'Hypertension', thyroid:'Thyroid', asthma:'Asthma', cardiac:'Cardiac', ortho:'Ortho', peds:'Paeds', obesity:'Obesity' }
 const TAG_COLORS = { diabetes:'#F59E0B', hypert:'#EF4444', thyroid:'#8B5CF6', asthma:'#3B82F6', cardiac:'#EC4899', ortho:'#10B981', peds:'#06B6D4', obesity:'#F97316' }
@@ -17,6 +17,35 @@ function maskPhone(phone) {
   const p = String(phone).replace(/[^0-9]/g,'')
   if (p.length < 6) return '••••••'
   return p.slice(0, 2) + '••••••' + p.slice(-2)
+}
+
+// ── Render template body with {{1}}, {{2}}... replaced by actual param values ──
+function renderTemplateBody(body, params) {
+  if (!body) return null
+  let text = body
+  ;(params || []).forEach((val, i) => {
+    text = text.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val || `{{${i + 1}}}`)
+  })
+  return text
+}
+
+// ── WhatsApp green bubble preview ─────────────────────────────────────────────
+function WABubble({ body, params }) {
+  const rendered = renderTemplateBody(body, params)
+  if (!rendered) return null
+  return (
+    <div style={{
+      background: '#E9FBE5', borderRadius: '12px 12px 12px 2px',
+      padding: '10px 14px', fontSize: 13, color: '#111', lineHeight: 1.65,
+      whiteSpace: 'pre-wrap', maxWidth: '100%', wordBreak: 'break-word',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+    }}>
+      {rendered}
+      <div style={{ fontSize: 10, color: '#8FA3AE', textAlign: 'right', marginTop: 4 }}>
+        {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} ✓✓
+      </div>
+    </div>
+  )
 }
 
 export default function ClinicPatients() {
@@ -33,9 +62,11 @@ export default function ClinicPatients() {
   const [showWAModal, setShowWAModal] = useState(false)
   const [waSending, setWaSending]   = useState(false)
   const [waSentCount, setWaSentCount] = useState(null)
+  const [waError, setWaError]       = useState(null)
 
-  // ── NEW: template selection state ──
+  // Template + custom params
   const [selectedTemplate, setSelectedTemplate] = useState(null)
+  const [customParams, setCustomParams]         = useState({}) // { 2: '18/3/2026', 3: 'Free camp' }
 
   useEffect(() => { loadPatients() }, [user])
 
@@ -58,12 +89,32 @@ export default function ClinicPatients() {
     ? patients.filter(p => (p.tags || []).includes(filterTag))
     : patients
 
-  // ── NEW: pull only marketing templates from profile campaigns ──
-  // A campaign is a marketing template if its name includes 'marketing' (case-insensitive)
+  // Pull marketing templates — any campaign whose name contains 'marketing'
   const allCampaigns = profile?.whatsappCampaigns || []
   const marketingTemplates = allCampaigns.filter(c =>
     c.name?.toLowerCase().includes('marketing')
   )
+
+  // Parse param count from the campaign's cURL
+  function getParamCount(template) {
+    if (!template) return 0
+    const parsed = parseCurl(template.curl)
+    return parsed?.paramCount || 1
+  }
+
+  // Build params array: slot 1 = patient name, slot 2+ = customParams typed by doctor
+  function buildParams(patientName, paramCount) {
+    const arr = [patientName]
+    for (let i = 2; i <= paramCount; i++) {
+      arr.push(customParams[i] || '')
+    }
+    return arr
+  }
+
+  // Preview params use placeholder name so doctor can see the full message
+  function buildPreviewParams(paramCount) {
+    return buildParams('Patient Name', paramCount)
+  }
 
   function toggleSelect(id) {
     setSelected(s => {
@@ -83,37 +134,97 @@ export default function ClinicPatients() {
 
   function openWAModal() {
     setSelectedTemplate(marketingTemplates.length > 0 ? marketingTemplates[0] : null)
+    setCustomParams({})
+    setWaError(null)
     setShowWAModal(true)
+  }
+
+  function closeWAModal() {
+    setShowWAModal(false)
+    setSelectedTemplate(null)
+    setCustomParams({})
+    setWaError(null)
+  }
+
+  function selectTemplate(t) {
+    setSelectedTemplate(t)
+    setCustomParams({})
+    setWaError(null)
   }
 
   async function handleBulkWA() {
     if (!selectedTemplate || selected.size === 0) return
+    setWaError(null)
+
+    const paramCount = getParamCount(selectedTemplate)
+
+    // Validate all custom params are filled
+    for (let i = 2; i <= paramCount; i++) {
+      if (!customParams[i]?.trim()) {
+        setWaError(`Please fill in Param {{${i}}} before sending.`)
+        return
+      }
+    }
+
+    // ── CORE FIX: call API directly using parsed cURL ──
+    // sendCampaign() looks up campaigns by purpose field. Marketing campaigns
+    // are saved with purpose='custom', NOT purpose='marketing_campaign'.
+    // So we skip sendCampaign() and call the AiSynergy API directly.
+    const parsed = parseCurl(selectedTemplate.curl)
+    if (!parsed?.apiKey) {
+      setWaError('Could not read API key from campaign. Check the campaign cURL in Settings → WhatsApp Campaigns.')
+      return
+    }
+
     setWaSending(true)
-    const campaigns = profile?.whatsappCampaigns || []
-    let sent = 0
     const selectedPatients = tagFiltered.filter(p => selected.has(p.id))
+    let sent = 0
+    let lastError = null
+
     for (const p of selectedPatients) {
       if (!p.phone) continue
+      const digits = p.phone.replace(/\D/g, '')
+      const destination = digits.startsWith('91') && digits.length === 12
+        ? digits : '91' + digits.slice(-10)
+
+      const params = buildParams(p.name, paramCount)
+
+      const payload = {
+        apiKey: parsed.apiKey,
+        campaignName: parsed.campaignName,
+        destination,
+        userName: 'AISYNERGY',
+        templateParams: params,
+        source: 'mediflow',
+        media: {},
+        attributes: {},
+        paramsFallbackValue: { FirstName: p.name || 'user' }
+      }
+
       try {
-        const result = await sendCampaign(
-          campaigns,
-          selectedTemplate.name,
-          p.phone,
-          [p.name],
-          null,
-          { centreId: user.uid, patientName: p.name }
-        )
-        if (result.ok) sent++
-      } catch (e) { console.warn('WA send failed for', p.phone) }
+        console.log('[Marketing WA] Sending to', p.name, payload)
+        const res = await fetch('https://backend.api-wa.co/campaign/aisynergy/api/v2', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        const text = await res.text()
+        console.log('[Marketing WA] Response:', res.status, text)
+        if (res.ok) sent++
+        else lastError = `API ${res.status}: ${text}`
+      } catch (e) {
+        console.warn('[Marketing WA] Failed for', p.phone, e.message)
+        lastError = e.message
+      }
     }
+
     setWaSending(false)
     setWaSentCount(sent)
-    setShowWAModal(false)
-    setSelectedTemplate(null)
+    if (sent === 0 && lastError) setWaError(`Send failed: ${lastError}`)
+    closeWAModal()
     setSelected(new Set())
   }
 
-  // ── CSV Export ──
   function exportCSV() {
     const rows = [['Name','Phone','Age','Gender','Tags','Last Visit']]
     filtered.forEach(p => rows.push([p.name, p.phone, p.age, p.gender, (p.tags||[]).join(';'), p.lastClinicVisit||'']))
@@ -135,7 +246,7 @@ export default function ClinicPatients() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
         {[['marketing','📣 Campaigns'], ['patients','👥 Patients']].map(([tab, label]) => (
-          <button key={tab} onClick={() => { setActiveTab(tab); setWaSentCount(null) }} style={{
+          <button key={tab} onClick={() => { setActiveTab(tab); setWaSentCount(null); setWaError(null) }} style={{
             padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: activeTab === tab ? 700 : 400,
             color: activeTab === tab ? 'var(--teal)' : 'var(--slate)',
@@ -205,11 +316,14 @@ export default function ClinicPatients() {
               ✓ WhatsApp sent to {waSentCount} patient{waSentCount !== 1 ? 's' : ''}
             </div>
           )}
-
-          {/* ── NEW: no templates warning ── */}
+          {waError && (
+            <div style={{ marginBottom: 16, padding: '12px 18px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10, fontSize: 13, color: '#B91C1C' }}>
+              ⚠ {waError}
+            </div>
+          )}
           {marketingTemplates.length === 0 && (
             <div style={{ marginBottom: 16, padding: '12px 18px', background: '#FFF7ED', border: '1px solid #F97316', borderRadius: 10, fontSize: 13, color: '#9A3412' }}>
-              ⚠ No marketing templates found. Go to <strong>Settings → WhatsApp Campaigns</strong> and add a campaign with "marketing" in the name, approved by AiSynergy.
+              ⚠ No marketing templates found. Go to <strong>Settings → WhatsApp Campaigns</strong> and add a campaign with "marketing" in the name.
             </div>
           )}
 
@@ -297,10 +411,11 @@ export default function ClinicPatients() {
         </>
       )}
 
-      {/* ── WA SEND MODAL — template picker ── */}
+      {/* ── WA SEND MODAL ── */}
       {showWAModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: 'white', borderRadius: 16, padding: 28, maxWidth: 480, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+          <div style={{ background: 'white', borderRadius: 16, padding: 28, maxWidth: 520, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', maxHeight: '90vh', overflowY: 'auto' }}>
+
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>📱 Send WhatsApp Campaign</div>
             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
               Sending to <strong>{selected.size} patient{selected.size !== 1 ? 's' : ''}</strong>
@@ -308,49 +423,111 @@ export default function ClinicPatients() {
             </div>
 
             {marketingTemplates.length === 0 ? (
-              <div style={{ background: '#FFF7ED', border: '1px solid #F97316', borderRadius: 10, padding: '14px 16px', fontSize: 13, color: '#9A3412', marginBottom: 20 }}>
-                ⚠ No marketing templates configured. Go to <strong>Settings → WhatsApp Campaigns</strong> and add a campaign with "marketing" in the name.
+              <div style={{ background: '#FFF7ED', border: '1px solid #F97316', borderRadius: 10, padding: '14px 16px', fontSize: 13, color: '#9A3412' }}>
+                ⚠ No marketing templates configured. Go to <strong>Settings → WhatsApp Campaigns</strong>.
               </div>
             ) : (
               <>
+                {/* Template picker */}
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>
-                    Select Template
-                  </label>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>Select Template</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {marketingTemplates.map(t => (
-                      <button
-                        key={t.name}
-                        type="button"
-                        onClick={() => setSelectedTemplate(t)}
-                        style={{
-                          padding: '12px 14px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
-                          border: `1.5px solid ${selectedTemplate?.name === t.name ? 'var(--teal)' : 'var(--border)'}`,
-                          background: selectedTemplate?.name === t.name ? 'var(--teal-light)' : 'var(--surface)',
+                    {marketingTemplates.map(t => {
+                      const pCount = getParamCount(t)
+                      const isSelected = selectedTemplate?.name === t.name
+                      return (
+                        <button key={t.name} type="button" onClick={() => selectTemplate(t)} style={{
+                          padding: '10px 14px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                          border: `1.5px solid ${isSelected ? 'var(--teal)' : 'var(--border)'}`,
+                          background: isSelected ? 'var(--teal-light)' : 'var(--surface)',
                           fontFamily: 'DM Sans, sans-serif', transition: 'all 0.15s'
-                        }}
-                      >
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>
-                          {selectedTemplate?.name === t.name ? '● ' : '○ '}{t.name}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                          {t.paramCount ? `${t.paramCount} param${t.paramCount !== 1 ? 's' : ''}` : 'Template'} · Patient name auto-filled as param 1
-                        </div>
-                      </button>
-                    ))}
+                        }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
+                            {isSelected ? '● ' : '○ '}{t.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                            {pCount} param{pCount !== 1 ? 's' : ''} · {'{{1}}'} = patient name (auto-filled)
+                            {pCount > 1 ? ` · {{2}}${pCount > 2 ? `–{{${pCount}}}` : ''} = you type below` : ''}
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
 
+                {/* Custom params — slots 2, 3, 4... typed by doctor */}
+                {selectedTemplate && (() => {
+                  const paramCount = getParamCount(selectedTemplate)
+                  if (paramCount <= 1) return null
+                  return (
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>
+                        Campaign Details — same for all patients
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {Array.from({ length: paramCount - 1 }, (_, i) => {
+                          const slot = i + 2
+                          const mappingLabel = selectedTemplate.paramMapping?.[slot - 1]
+                          const showLabel = mappingLabel && mappingLabel !== '__custom__' && mappingLabel !== ''
+                          return (
+                            <div key={slot}>
+                              <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                                {`{{${slot}}}`}{showLabel ? ` — ${mappingLabel}` : ''}
+                              </label>
+                              <input
+                                type="text"
+                                value={customParams[slot] || ''}
+                                onChange={e => setCustomParams(cp => ({ ...cp, [slot]: e.target.value }))}
+                                placeholder={slot === 2 ? 'e.g. 18/3/2026 or Free Diabetes Camp' : `Enter value for param ${slot}`}
+                                style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box', transition: 'border 0.18s' }}
+                                onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Message preview bubble */}
                 {selectedTemplate && (
-                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#166534', marginBottom: 18 }}>
-                    ✓ Template <strong>{selectedTemplate.name}</strong> selected. Patient name will be sent as param 1 automatically.
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>
+                      Message Preview
+                    </label>
+                    <div style={{ background: '#ECF0F1', borderRadius: 12, padding: '12px 14px' }}>
+                      {/* Phone header mock */}
+                      <div style={{ fontSize: 11, color: '#8FA3AE', marginBottom: 8, fontWeight: 500 }}>
+                        📱 {selectedTemplate.name}
+                      </div>
+                      {selectedTemplate.templateBody ? (
+                        <WABubble
+                          body={selectedTemplate.templateBody}
+                          params={buildPreviewParams(getParamCount(selectedTemplate))}
+                        />
+                      ) : (
+                        <div style={{ background: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>
+                          <div style={{ fontStyle: 'italic', marginBottom: 6 }}>Message body not saved for this template.</div>
+                          <div>To see a preview here: go to <strong>Settings → WhatsApp Campaigns</strong>, edit this campaign, and paste the message body text into the "Template Body" field.</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Error */}
+                {waError && (
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#B91C1C', marginBottom: 14 }}>
+                    ⚠ {waError}
                   </div>
                 )}
               </>
             )}
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => { setShowWAModal(false); setSelectedTemplate(null) }} style={{
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button onClick={closeWAModal} style={{
                 flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)',
                 background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)'
               }}>Cancel</button>
