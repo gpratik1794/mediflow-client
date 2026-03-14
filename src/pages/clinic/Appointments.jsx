@@ -423,10 +423,9 @@ export default function Appointments() {
                     </td>
                     <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{a.appointmentTime}</td>
                     <td style={{ padding: '12px 18px', fontSize: 12, color: 'var(--muted)' }}>{a.visitType}</td>
-                    <td style={{ padding: '12px 18px' }}>
+                    <td style={{ padding: '12px 18px' }} onClick={canCallIn && a.status === 'waiting' ? e => { e.stopPropagation(); quickStatus(e, a.id, 'in-consultation') } : undefined}>
                       {canCallIn && a.status === 'waiting' ? (
                         <span
-                          onClick={e => quickStatus(e, a.id, 'in-consultation')}
                           title="Click to call in"
                           style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: sc.bg, color: sc.color, cursor: 'pointer', border: '1.5px solid var(--amber)', display: 'inline-block' }}>
                           {sc.label} →
@@ -462,7 +461,7 @@ export default function Appointments() {
                         </button>
                       )}
                       {canCallIn && a.status === 'waiting' && (
-                        <button onClick={e => quickStatus(e, a.id, 'in-consultation')}
+                        <button onClick={e => { e.stopPropagation(); quickStatus(e, a.id, 'in-consultation') }}
                           style={{ ...iStyle, background: 'var(--teal-light)', color: 'var(--teal)' }}>
                           → Call In
                         </button>
