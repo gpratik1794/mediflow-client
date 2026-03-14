@@ -54,7 +54,7 @@ export default function Appointments() {
   const unsubRef = useRef(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !centreId) return
     setLoading(true)
     if (unsubRef.current) unsubRef.current()
     unsubRef.current = subscribeToAppointments(centreId, viewDate, data => {
@@ -62,7 +62,7 @@ export default function Appointments() {
       setLoading(false)
     })
     return () => { if (unsubRef.current) unsubRef.current() }
-  }, [user, viewDate])
+  }, [user, centreId, viewDate])
 
   async function load() {
     const data = await getAppointments(centreId, viewDate)

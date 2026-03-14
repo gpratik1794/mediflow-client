@@ -47,7 +47,10 @@ export default function PrescriptionWriter() {
   const [pendingFees, setPendingFees]     = useState([])     // done patients with pending fee
   const [callingIn, setCallingIn]         = useState(false)
   const [reminderChoice, setReminderChoice] = useState('auto15') // 'auto15'|'auto30'|'now'|'skip'
+  const [showSendNowModal, setShowSendNowModal] = useState(false)  // confirmation before sending
+  const [sendingReminder, setSendingReminder]   = useState(false)
   const reminderTimerRef = useRef(null)
+  const allTodayRef = useRef([])  // store latest appointments for send-now access
 
   const ALL_TAGS   = ['diabetes','hypert','thyroid','asthma','cardiac','ortho','peds','obesity']
   const TAG_LABELS = { diabetes:'Diabetes', hypert:'Hypertension', thyroid:'Thyroid', asthma:'Asthma', cardiac:'Cardiac', ortho:'Ortho', peds:'Paeds', obesity:'Obesity' }
@@ -55,7 +58,7 @@ export default function PrescriptionWriter() {
 
   const today = format(new Date(), 'yyyy-MM-dd')
 
-  useEffect(() => { loadMedicines() }, [user])
+  useEffect(() => { if (user && centreId) loadMedicines() }, [user, centreId])
   useEffect(() => { if (initPhone) loadPatientTags(initPhone) }, [initPhone])
 
   // Cleanup reminder timer on unmount
@@ -134,14 +137,15 @@ export default function PrescriptionWriter() {
 
       // ── Load next waiting + pending fees ──────────────────────────────────
       const allToday = await getAppointments(centreId, today)
+      allTodayRef.current = allToday  // store for send-now access
       const waiting = allToday
         .filter(a => a.status === 'waiting')
         .sort((a, b) => (a.tokenNumber || 0) - (b.tokenNumber || 0))
       setNextPatient(waiting[0] || null)
       setPendingFees(allToday.filter(a => a.status === 'done' && a.paymentStatus === 'pending'))
 
-      // ── Schedule auto reminder if choice is auto15 ──
-      scheduleReminder('auto15', allToday)
+      // ── Default to auto15, but don't schedule yet — user picks ──
+      setReminderChoice('auto15')
 
       setToast({ message: 'Prescription saved!', type: 'success' })
     } catch (err) {
@@ -151,31 +155,43 @@ export default function PrescriptionWriter() {
     setLoading(false)
   }
 
-  function scheduleReminder(choice, allToday) {
+  function scheduleReminder(choice) {
     if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current)
     if (choice === 'skip') return
-    const delay = choice === 'auto15' ? 15 * 60 * 1000 : choice === 'auto30' ? 30 * 60 * 1000 : 0
-    if (delay === 0) {
-      sendFeeReminder(allToday)
+    if (choice === 'now') {
+      // Show confirmation modal — don't send silently
+      setShowSendNowModal(true)
       return
     }
+    const delay = choice === 'auto15' ? 15 * 60 * 1000 : 30 * 60 * 1000
     reminderTimerRef.current = setTimeout(() => {
       // Re-fetch to get latest fee status before sending
       getAppointments(centreId, today).then(latest => sendFeeReminder(latest))
     }, delay)
   }
 
-  function sendFeeReminder(allToday) {
+  async function handleSendNowConfirm() {
+    setSendingReminder(true)
+    // Re-fetch latest before sending
+    const latest = await getAppointments(centreId, today)
+    await sendFeeReminder(latest)
+    setSendingReminder(false)
+    setShowSendNowModal(false)
+    setReminderChoice('skip')  // mark as done
+  }
+
+  async function sendFeeReminder(allToday) {
     const stillPending = (allToday || []).filter(a => a.status === 'done' && a.paymentStatus === 'pending')
-    if (stillPending.length === 0) return
-    const doc = profile?.doctors?.[0] || {}
-    const doctorPhone = doc.phone || profile?.phone
-    if (!doctorPhone || !profile?.whatsappCampaigns?.length) return
-    const names = stillPending.map(p => p.patientName).join(', ')
+    if (stillPending.length === 0) return { sent: false, reason: 'no_pending' }
+    const docObj = profile?.doctors?.[0] || {}
+    const doctorPhone = docObj.phone || profile?.phone
+    if (!doctorPhone) return { sent: false, reason: 'no_phone' }
+    if (!profile?.whatsappCampaigns?.length) return { sent: false, reason: 'no_campaign' }
     const total = stillPending.reduce((s, a) => s + parseFloat(a.consultationFee || 0), 0)
-    sendCampaign(profile.whatsappCampaigns, 'doctor_session_report', doctorPhone,
-      [doc.name || 'Doctor', 'Fee Reminder', format(new Date(), 'dd MMM yyyy'), String(stillPending.length), '—', '—', '₹0', `₹${total}`],
+    const result = await sendCampaign(profile.whatsappCampaigns, 'doctor_session_report', doctorPhone,
+      [docObj.name || 'Doctor', 'Fee Reminder', format(new Date(), 'dd MMM yyyy'), String(stillPending.length), '—', '—', '₹0', `₹${total}`],
       null, { centreId })
+    return { sent: result?.ok, stillPending, total }
   }
 
   async function handleCallInNext() {
@@ -266,8 +282,7 @@ export default function PrescriptionWriter() {
                   <button key={opt.key} type="button"
                     onClick={() => {
                       setReminderChoice(opt.key)
-                      if (reminderTimerRef.current) clearTimeout(reminderTimerRef.current)
-                      scheduleReminder(opt.key, null)
+                      scheduleReminder(opt.key)
                     }}
                     style={{
                       padding: '10px 8px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
@@ -297,6 +312,55 @@ export default function PrescriptionWriter() {
           </div>
 
         </div>
+
+        {/* ── Send Now confirmation modal ── */}
+        {showSendNowModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: 'white', borderRadius: 16, padding: 28, maxWidth: 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>📲 Send fee reminder now?</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+                A WhatsApp will be sent to Dr. {profile?.doctors?.[0]?.name || profile?.ownerName || 'Doctor'} with the current pending fee status.
+              </div>
+
+              {/* Summary of pending fees */}
+              <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--amber)', borderRadius: 10, padding: '12px 14px', marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber)', marginBottom: 8 }}>
+                  💰 {pendingFees.length} fee{pendingFees.length !== 1 ? 's' : ''} pending
+                </div>
+                {pendingFees.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--slate)', marginBottom: 4 }}>
+                    <span>{p.patientName} (#{p.tokenNumber})</span>
+                    <span style={{ fontWeight: 600 }}>₹{p.consultationFee || '?'}</span>
+                  </div>
+                ))}
+                <div style={{ borderTop: '1px solid var(--amber)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: 'var(--amber)' }}>
+                  <span>Total pending</span>
+                  <span>₹{pendingFees.reduce((s, a) => s + parseFloat(a.consultationFee || 0), 0).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Send to info */}
+              <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 14px', marginBottom: 20, fontSize: 12, color: 'var(--slate)' }}>
+                📱 Sending to: <strong>{profile?.doctors?.[0]?.name || profile?.ownerName || 'Doctor'}</strong>
+                {(profile?.doctors?.[0]?.phone || profile?.phone) && (
+                  <span style={{ color: 'var(--muted)' }}> · {profile?.doctors?.[0]?.phone || profile?.phone}</span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setShowSendNowModal(false); setReminderChoice('auto15') }}
+                  style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)' }}>
+                  Cancel
+                </button>
+                <button onClick={handleSendNowConfirm} disabled={sendingReminder}
+                  style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', cursor: sendingReminder ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', opacity: sendingReminder ? 0.7 : 1 }}>
+                  {sendingReminder ? 'Sending…' : '📲 Send WhatsApp Now'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       </Layout>
     )

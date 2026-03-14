@@ -71,7 +71,7 @@ export default function AppointmentDetail() {
   const [savingFee, setSavingFee]     = useState(false)
   const [prescBlockModal, setPrescBlockModal] = useState(false)
 
-  useEffect(() => { if (user && id) loadData() }, [id, user])
+  useEffect(() => { if (user && id && centreId) loadData() }, [id, user, centreId])
 
   async function loadData() {
     setLoading(true)
