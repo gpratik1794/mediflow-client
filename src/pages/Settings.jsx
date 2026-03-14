@@ -326,6 +326,85 @@ function CampaignAdder({ onAdd, globalApiKey }) {
 }
 
 
+// ── Campaign Card — shows body editor + delete, no full edit mode ─────────────
+function CampaignCard({ campaign: c, parsed, enabled, centreName, campaigns, onToggleEnabled, onDelete, onSaveBody }) {
+  const [showBody, setShowBody]   = useState(false)
+  const [bodyDraft, setBodyDraft] = useState(c.templateBody || '')
+  const [bodySaved, setBodySaved] = useState(false)
+
+  async function handleSaveBody() {
+    await onSaveBody(bodyDraft.trim())
+    setBodySaved(true)
+    setTimeout(() => setBodySaved(false), 2000)
+  }
+
+  const iStyle = { width: '100%', padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 12, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box', background: '#fff', color: 'var(--navy)', outline: 'none', resize: 'vertical' }
+
+  return (
+    <div style={{ border: '1.5px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, background: enabled ? 'var(--surface)' : 'var(--bg)', opacity: enabled ? 1 : 0.7 }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: enabled ? 'var(--teal)' : 'var(--muted)', background: enabled ? 'var(--teal-light)' : 'var(--border)', padding: '3px 10px', borderRadius: 20 }}>{c.purpose}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.name}</span>
+          {parsed && <span style={{ fontSize: 11, color: 'var(--muted)' }}>· {parsed.paramCount} params{parsed.hasMedia ? ' · doc' : ''}</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Toggle body editor */}
+          <button type="button" onClick={() => setShowBody(s => !s)} style={{ padding: '4px 10px', borderRadius: 20, border: '1.5px solid var(--border)', background: showBody ? 'var(--teal-light)' : 'none', color: showBody ? 'var(--teal)' : 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+            {c.templateBody ? '✎ Edit Body' : '+ Add Body'}
+          </button>
+          {/* Active/Paused toggle */}
+          <button type="button" onClick={onToggleEnabled} style={{ padding: '4px 12px', borderRadius: 20, border: '1.5px solid', borderColor: enabled ? 'var(--teal)' : 'var(--border)', background: enabled ? 'var(--teal-light)' : 'none', color: enabled ? 'var(--teal)' : 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+            {enabled ? '● Active' : '○ Paused'}
+          </button>
+          {/* Delete */}
+          <button type="button" onClick={onDelete} style={{ background: 'var(--red-bg)', border: 'none', borderRadius: 8, color: 'var(--red)', fontSize: 11, fontWeight: 600, padding: '4px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>✕ Delete</button>
+        </div>
+      </div>
+
+      {/* Campaign name monospace */}
+      {parsed && (
+        <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', background: 'var(--bg)', padding: '5px 9px', borderRadius: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          campaign: {parsed.campaignName}
+        </div>
+      )}
+
+      {/* ── Template Body editor — collapsible ── */}
+      {showBody && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--bg)', borderRadius: 10, padding: '12px 14px', border: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Template Body Text
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.6 }}>
+            Paste your exact WhatsApp template message here. Use <code>{'{{1}}'}</code>, <code>{'{{2}}'}</code> etc. for params. This is shown as a preview in the Marketing send modal.
+          </div>
+          <textarea
+            value={bodyDraft}
+            onChange={e => { setBodyDraft(e.target.value); setBodySaved(false) }}
+            placeholder={`e.g. Dear {{1}}, we are hosting a Diabetes Camp on {{2}}. Join us for a free checkup. — ${c.name || 'YourClinic'}`}
+            rows={4}
+            style={iStyle}
+          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" onClick={handleSaveBody} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+              {bodySaved ? '✓ Saved' : '💾 Save Body'}
+            </button>
+            <button type="button" onClick={() => { setShowBody(false); setBodyDraft(c.templateBody || '') }} style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'none', color: 'var(--slate)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+              Cancel
+            </button>
+            {c.templateBody && (
+              <span style={{ fontSize: 11, color: 'var(--teal)', marginLeft: 4 }}>✓ Body saved</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <CampaignInlineTest campaign={c} centreName={centreName} campaigns={campaigns} />
+    </div>
+  )
+}
+
 // Inline test for a single campaign — shown inside each campaign card
 function CampaignInlineTest({ campaign, centreName, campaigns }) {
   const [phone, setPhone]   = useState('')
@@ -1753,35 +1832,29 @@ export default function Settings() {
                 const parsed  = parseCurl(c.curl)
                 const enabled = c.enabled !== false
                 return (
-                  <div key={i} style={{ border: '1.5px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, background: enabled ? 'var(--surface)' : 'var(--bg)', opacity: enabled ? 1 : 0.7 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: enabled ? 'var(--teal)' : 'var(--muted)', background: enabled ? 'var(--teal-light)' : 'var(--border)', padding: '3px 10px', borderRadius: 20 }}>{c.purpose}</span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{c.name}</span>
-                        {parsed && <span style={{ fontSize: 11, color: 'var(--muted)' }}>· {parsed.paramCount} params{parsed.hasMedia ? ' · doc' : ''}</span>}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <button type="button" onClick={async () => {
-                          const updated = (form.whatsappCampaigns || []).map((x, j) => j === i ? { ...x, enabled: !enabled } : x)
-                          setForm(f => ({ ...f, whatsappCampaigns: updated }))
-                          try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
-                        }} style={{ padding: '4px 12px', borderRadius: 20, border: '1.5px solid', borderColor: enabled ? 'var(--teal)' : 'var(--border)', background: enabled ? 'var(--teal-light)' : 'none', color: enabled ? 'var(--teal)' : 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
-                          {enabled ? '● Active' : '○ Paused'}
-                        </button>
-                        <button type="button" onClick={async () => {
-                          const updated = (form.whatsappCampaigns || []).filter((_, j) => j !== i)
-                          setForm(f => ({ ...f, whatsappCampaigns: updated }))
-                          try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
-                        }} style={{ background: 'var(--red-bg)', border: 'none', borderRadius: 8, color: 'var(--red)', fontSize: 11, fontWeight: 600, padding: '4px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>✕ Delete</button>
-                      </div>
-                    </div>
-                    {parsed && (
-                      <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', background: 'var(--bg)', padding: '5px 9px', borderRadius: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        campaign: {parsed.campaignName}
-                      </div>
-                    )}
-                    <CampaignInlineTest campaign={c} centreName={form.centreName} campaigns={form.whatsappCampaigns || []} />
-                  </div>
+                  <CampaignCard
+                    key={i}
+                    campaign={c}
+                    parsed={parsed}
+                    enabled={enabled}
+                    centreName={form.centreName}
+                    campaigns={form.whatsappCampaigns || []}
+                    onToggleEnabled={async () => {
+                      const updated = (form.whatsappCampaigns || []).map((x, j) => j === i ? { ...x, enabled: !enabled } : x)
+                      setForm(f => ({ ...f, whatsappCampaigns: updated }))
+                      try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
+                    }}
+                    onDelete={async () => {
+                      const updated = (form.whatsappCampaigns || []).filter((_, j) => j !== i)
+                      setForm(f => ({ ...f, whatsappCampaigns: updated }))
+                      try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
+                    }}
+                    onSaveBody={async (body) => {
+                      const updated = (form.whatsappCampaigns || []).map((x, j) => j === i ? { ...x, templateBody: body } : x)
+                      setForm(f => ({ ...f, whatsappCampaigns: updated }))
+                      try { await setDoc(doc(db, 'centres', user.uid, 'profile', 'main'), { whatsappCampaigns: updated }, { merge: true }) } catch(e) {}
+                    }}
+                  />
                 )
               })}
 
