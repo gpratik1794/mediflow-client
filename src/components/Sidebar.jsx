@@ -199,7 +199,7 @@ export default function Sidebar({ isMobile, isOpen, onClose }) {
               key={item.to + i}
               to={item.to}
               end={item.to === '/' || item.to === '/clinic'}
-              onClick={isMobile ? onClose : undefined}  // close drawer on nav tap
+              onClick={isMobile ? () => setTimeout(onClose, 100) : undefined}  // close drawer on nav tap
               style={({ isActive }) => ({
                 display: 'flex',
                 alignItems: 'center',
