@@ -1464,6 +1464,21 @@ export default function Settings() {
     setStaffSaving(false)
   }
 
+  async function handleUpdatePermission(staffUid, key, value) {
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore')
+      const { db } = await import('../firebase/config')
+      await updateDoc(doc(db, 'staffUsers', staffUid), { [`permissions.${key}`]: value })
+      setStaffList(list => list.map(s => s.id === staffUid
+        ? { ...s, permissions: { ...(s.permissions || {}), [key]: value } }
+        : s
+      ))
+      setToast({ message: 'Permission updated', type: 'success' })
+    } catch (e) {
+      setToast({ message: 'Failed to update permission', type: 'error' })
+    }
+  }
+
   async function handleDeleteStaff(staffUid, staffName) {
     if (!window.confirm('Remove ' + staffName + ' access? They will no longer be able to log in.')) return
     try {
@@ -1866,18 +1881,42 @@ export default function Settings() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {staffList.map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)' }}>
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: s.role === 'doctor' ? '#EFF6FF' : '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-                          {s.role === 'doctor' ? '👨‍⚕️' : '🧑‍💼'}
+                      <div key={s.id} style={{ borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', overflow: 'hidden' }}>
+                        {/* Staff header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: '50%', background: s.role === 'doctor' ? '#EFF6FF' : '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
+                            {s.role === 'doctor' ? '👨‍⚕️' : '🧑‍💼'}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>{s.name}</div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>{s.email} · <span style={{ textTransform: 'capitalize' }}>{s.role}</span></div>
+                          </div>
+                          <button onClick={() => handleDeleteStaff(s.id, s.name)}
+                            style={{ background: 'none', border: '1.5px solid #FCA5A5', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#DC2626', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                            Remove
+                          </button>
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>{s.name}</div>
-                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{s.email} · <span style={{ textTransform: 'capitalize' }}>{s.role}</span></div>
-                        </div>
-                        <button onClick={() => handleDeleteStaff(s.id, s.name)}
-                          style={{ background: 'none', border: '1.5px solid #FCA5A5', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#DC2626', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
-                          Remove
-                        </button>
+                        {/* Permissions — only for receptionists */}
+                        {s.role === 'receptionist' && (
+                          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 16px', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Permissions:</span>
+                            {[
+                              { key: 'showMarketing', label: 'Marketing tab' },
+                              { key: 'showFollowups', label: 'Follow-ups tab' },
+                            ].map(perm => {
+                              const isOn = s.permissions?.[perm.key] !== false
+                              return (
+                                <label key={perm.key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--slate)' }}>
+                                  <div onClick={() => handleUpdatePermission(s.id, perm.key, !isOn)}
+                                    style={{ width: 32, height: 18, borderRadius: 9, background: isOn ? 'var(--teal)' : 'var(--border)', position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}>
+                                    <div style={{ position: 'absolute', top: 2, left: isOn ? 16 : 2, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                                  </div>
+                                  {perm.label}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

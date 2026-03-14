@@ -51,6 +51,8 @@ export default function Sidebar() {
   const centreType = profile?.centreType || 'diagnostic'
   const modules    = profile?.modules || {}
   const isReceptionist = role === 'receptionist'
+  // staffPermissions stored on the staffUsers record by the clinic owner
+  const permissions = userRecord?.permissions || {}
 
   function buildClinicNav(modules) {
     const nav = [
@@ -58,8 +60,8 @@ export default function Sidebar() {
       { to: '/clinic', label: 'Dashboard', icon: '▦' },
       { section: 'Patients' },
       { to: '/clinic/appointments', label: 'Appointments', icon: '📅' },
-      { to: '/clinic/patients',     label: 'Marketing',    icon: '📣' },
-      { to: '/clinic/followups',    label: 'Follow-ups',   icon: '🔔' },
+      ...((!isReceptionist || permissions.showMarketing) ? [{ to: '/clinic/patients', label: 'Marketing', icon: '📣' }] : []),
+      ...((!isReceptionist || permissions.showFollowups !== false) ? [{ to: '/clinic/followups', label: 'Follow-ups', icon: '🔔' }] : []),
     ]
     if (modules?.vaccination) {
       nav.push({ to: '/clinic/vaccination', label: 'Vaccination', icon: '💉' })
