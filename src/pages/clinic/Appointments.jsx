@@ -473,27 +473,29 @@ export default function Appointments() {
           title={`${appointments.length} appointment${appointments.length !== 1 ? 's' : ''} · ${isToday ? 'Today' : format(new Date(viewDate + 'T00:00:00'), 'dd MMM yyyy')}`}
           sub={isToday ? format(new Date(), 'EEEE, dd MMMM yyyy') : format(new Date(viewDate + 'T00:00:00'), 'EEEE, dd MMMM yyyy')}
           action={
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Date navigator */}
-              <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+              {/* Row 1: Date navigator */}
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <button onClick={() => { const d = new Date(viewDate + 'T00:00:00'); d.setDate(d.getDate()-1); setViewDate(format(d,'yyyy-MM-dd')) }}
                   style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', minWidth: 36, minHeight: 36 }}>‹</button>
                 <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)}
-                  style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', cursor: 'pointer', maxWidth: isMobile ? 130 : 'auto' }} />
+                  style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 8px', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', cursor: 'pointer', flex: isMobile ? 1 : 'none' }} />
                 <button onClick={() => { const d = new Date(viewDate + 'T00:00:00'); d.setDate(d.getDate()+1); setViewDate(format(d,'yyyy-MM-dd')) }}
                   style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', minWidth: 36, minHeight: 36 }}>›</button>
                 {!isToday && (
                   <button onClick={() => setViewDate(today)}
-                    style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--teal)', background: 'var(--teal-light)', color: 'var(--teal)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif' }}>
+                    style={{ padding: '6px 10px', borderRadius: 7, border: '1.5px solid var(--teal)', background: 'var(--teal-light)', color: 'var(--teal)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
                     Today
                   </button>
                 )}
               </div>
-              {/* Search — full width on mobile */}
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="🔍 Search…"
-                style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', width: isMobile ? '100%' : 200 }} />
-              <Btn variant="ghost" small onClick={load}>🔄</Btn>
+              {/* Row 2: Search + refresh */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="🔍 Search name or phone…"
+                  style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', flex: 1, minWidth: 0 }} />
+                <Btn variant="ghost" small onClick={load}>🔄</Btn>
+              </div>
             </div>
           }
         />
