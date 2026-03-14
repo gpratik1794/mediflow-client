@@ -65,13 +65,17 @@ export function AuthProvider({ children }) {
         setRole(rec.role || 'receptionist')
         if (rec.centreId) {
           let firstSnap = true
+          // Timeout: if snapshot doesn't fire in 5s, unblock anyway
+          const timeout = setTimeout(() => {
+            if (firstSnap) { firstSnap = false; setLoading(false) }
+          }, 5000)
           profileUnsub = onSnapshot(
             doc(db, 'centres', rec.centreId, 'profile', 'main'),
             snap => {
               if (snap.exists()) setProfile({ ...snap.data(), _centreId: rec.centreId })
-              if (firstSnap) { firstSnap = false; setLoading(false) }
+              if (firstSnap) { firstSnap = false; clearTimeout(timeout); setLoading(false) }
             },
-            e => { console.warn('Staff profile listen failed', e); setLoading(false) }
+            e => { console.warn('Staff profile listen failed', e); clearTimeout(timeout); setLoading(false) }
           )
         } else {
           setLoading(false)
@@ -79,13 +83,17 @@ export function AuthProvider({ children }) {
       } else {
         setRole(null)
         let firstSnap = true
+        // Timeout: if snapshot doesn't fire in 5s, unblock anyway
+        const timeout = setTimeout(() => {
+          if (firstSnap) { firstSnap = false; setLoading(false) }
+        }, 5000)
         profileUnsub = onSnapshot(
           doc(db, 'centres', firebaseUser.uid, 'profile', 'main'),
           snap => {
             if (snap.exists()) setProfile(snap.data())
-            if (firstSnap) { firstSnap = false; setLoading(false) }
+            if (firstSnap) { firstSnap = false; clearTimeout(timeout); setLoading(false) }
           },
-          e => { console.warn('Profile listen failed', e); setLoading(false) }
+          e => { console.warn('Profile listen failed', e); clearTimeout(timeout); setLoading(false) }
         )
       }
     })
@@ -131,8 +139,9 @@ export function AuthProvider({ children }) {
     )
   }
 
-  // maxStaff: how many total accounts allowed (including admin). Default 1 = admin only.
-  const maxStaff = clientRecord?.maxStaff || 1
+  // maxStaff: read from profile (centres/uid/profile/main) — available for both owner and staff
+  // Fall back to clientRecord.maxStaff for legacy, then default 1
+  const maxStaff = profile?.maxStaff || clientRecord?.maxStaff || 1
 
   return (
     <AuthContext.Provider value={{ user, profile, clientRecord, loading, role, userRecord, maxStaff }}>

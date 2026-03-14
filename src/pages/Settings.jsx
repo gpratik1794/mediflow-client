@@ -1459,7 +1459,7 @@ export default function Settings() {
       if (!res.ok) { setStaffErr(data.error || 'Failed to create account.'); setStaffSaving(false); return }
       setStaffSuccess('Account created for ' + name + '.')
       setNewStaff({ name: '', email: '', password: '', role: 'receptionist' })
-      loadStaffList()
+      await loadStaffList()
     } catch (e) { setStaffErr('Network error. Try again.') }
     setStaffSaving(false)
   }
@@ -1807,7 +1807,7 @@ export default function Settings() {
 
         {/* ── STAFF TAB ── */}
         {activeTab === 'staff' && (() => {
-          if (staffList.length === 0 && !staffLoading) loadStaffList()
+          if (!staffLoading) loadStaffList()
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Staff limit info banner */}
