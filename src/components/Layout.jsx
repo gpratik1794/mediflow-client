@@ -17,7 +17,7 @@ export default function Layout({ children, title, action }) {
   }, [])
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', width: '100%', overflow: 'hidden' }}>
 
       {/* Sidebar — always rendered, mobile drawer behavior handled inside */}
       <Sidebar
@@ -42,10 +42,11 @@ export default function Layout({ children, title, action }) {
       <main style={{
         marginLeft: isMobile ? 0 : 'var(--sidebar-w)',
         flex: 1,
+        minWidth: 0,
+        width: isMobile ? '100%' : `calc(100% - var(--sidebar-w))`,
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
-        // Prevent content shift when drawer opens on mobile
         transition: 'margin-left 0.25s ease',
       }}>
 
