@@ -641,8 +641,6 @@ export default function PrescriptionWriter() {
             </div>
           </Card>
 
-          </Card>
-
           {/* Spacer so content isn't hidden behind floating bar */}
           <div style={{ height: isMobile ? 90 : 0 }} />
         </div>
