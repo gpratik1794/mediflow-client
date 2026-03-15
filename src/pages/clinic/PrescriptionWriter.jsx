@@ -63,6 +63,11 @@ export default function PrescriptionWriter() {
   const TAG_LABELS = { diabetes:'Diabetes', hypert:'Hypertension', thyroid:'Thyroid', asthma:'Asthma', cardiac:'Cardiac', ortho:'Ortho', peds:'Paeds', obesity:'Obesity' }
   const TAG_COLORS = { diabetes:'#F59E0B', hypert:'#EF4444', thyroid:'#8B5CF6', asthma:'#3B82F6', cardiac:'#EC4899', ortho:'#10B981', peds:'#06B6D4', obesity:'#F97316' }
 
+  const [showCloseNoRx, setShowCloseNoRx]     = useState(false)
+  const [closeNoRxReason, setCloseNoRxReason] = useState('')
+  const [closeNoRxOther, setCloseNoRxOther]   = useState('')
+  const [closingNoRx, setClosingNoRx]         = useState(false)
+
   const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => { if (user && centreId) loadMedicines() }, [user, centreId])
@@ -100,6 +105,19 @@ export default function PrescriptionWriter() {
   function updateMed(idx, key, val) { setSelectedMeds(s => s.map((m, i) => i === idx ? { ...m, [key]: val } : m)) }
 
   const handlePrint = () => printPrescription({ patient, diagnosis, complaints, medicines: selectedMeds, advice, labTests: labTests.filter(t => t.name.trim()), followUpDays, profile, date: today })
+
+  async function handleCloseNoRx() {
+    if (!closeNoRxReason) return
+    setClosingNoRx(true)
+    const reason = closeNoRxReason === 'Other' ? (closeNoRxOther || 'Other') : closeNoRxReason
+    if (apptId) {
+      await updateAppointment(centreId, apptId, { status: 'done', closedWithoutPrescription: true, closeReason: reason })
+      logActivity(centreId, { action: 'appt_closed_no_rx', label: 'Closed Without Prescription', detail: `${patient.name} · ${reason}`, by: user?.email || '' })
+    }
+    setClosingNoRx(false)
+    setShowCloseNoRx(false)
+    navigate('/clinic/appointments')
+  }
 
   async function handleSave() {
     if (!patient.name || selectedMeds.length === 0) {
@@ -626,12 +644,70 @@ export default function PrescriptionWriter() {
           <Btn onClick={handleSave} disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
             {loading ? 'Saving…' : '💾 Save & Complete Visit'}
           </Btn>
+          {apptId && (
+            <button onClick={() => setShowCloseNoRx(true)}
+              style={{ width: '100%', padding: '11px', borderRadius: 10, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', marginTop: 4 }}>
+              Close Without Prescription
+            </button>
+          )}
           <Btn variant="ghost" onClick={handlePrint} style={{ width: '100%', justifyContent: 'center' }}>
             🖨 Print Prescription
           </Btn>
         </div>
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* ── Close Without Prescription Modal ── */}
+      {showCloseNoRx && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.55)', zIndex: 1000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: isMobile ? '20px 20px 0 0' : 20, width: '100%', maxWidth: isMobile ? '100%' : 440, overflow: 'hidden', boxShadow: '0 24px 60px rgba(13,43,62,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg, #7C2D12, #9A3412)', padding: '28px 28px 24px' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(249,115,22,0.2)', border: '1.5px solid rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 14 }}>📋</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 6 }}>Close Without Prescription</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                Select a reason — saved to <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{patient.name}</strong>'s appointment record.
+              </div>
+            </div>
+            <div style={{ padding: '24px 28px 28px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--muted)', marginBottom: 14 }}>Select reason</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                {['Advice Only', 'Referred Out', 'Follow-up Only', 'No Medication Needed', 'Other'].map(r => (
+                  <button key={r} onClick={() => setCloseNoRxReason(r)} style={{
+                    padding: '10px 12px', borderRadius: 10,
+                    border: `1.5px solid ${closeNoRxReason === r ? '#F97316' : 'var(--border)'}`,
+                    background: closeNoRxReason === r ? '#FFF7ED' : 'var(--surface)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: closeNoRxReason === r ? 600 : 500,
+                    color: closeNoRxReason === r ? '#9A3412' : 'var(--slate)',
+                    fontFamily: 'DM Sans, sans-serif', textAlign: 'center', transition: 'all 0.15s',
+                    gridColumn: r === 'Other' ? '1 / -1' : 'auto', minHeight: 44,
+                  }}>
+                    {closeNoRxReason === r ? '✓ ' : ''}{r}
+                  </button>
+                ))}
+              </div>
+              {closeNoRxReason === 'Other' && (
+                <input value={closeNoRxOther} onChange={e => setCloseNoRxOther(e.target.value)}
+                  placeholder="Type reason here…"
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #F97316', borderRadius: 10, fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--navy)', outline: 'none', marginBottom: 14, boxSizing: 'border-box' }} />
+              )}
+              <div style={{ display: 'flex', gap: 10, background: 'var(--amber-bg)', border: '1px solid var(--amber)', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: 12, color: '#92400E', lineHeight: 1.6 }}>
+                <span>⚠️</span>
+                <span>Appointment will be marked <strong>Done</strong> without a prescription. This cannot be undone.</span>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setShowCloseNoRx(false); setCloseNoRxReason(''); setCloseNoRxOther('') }}
+                  style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', fontWeight: 500 }}>
+                  ← Back
+                </button>
+                <button onClick={handleCloseNoRx} disabled={closingNoRx || !closeNoRxReason}
+                  style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: closeNoRxReason ? '#F97316' : 'var(--border)', color: closeNoRxReason ? '#fff' : 'var(--muted)', cursor: closeNoRxReason ? 'pointer' : 'not-allowed', fontSize: 13, fontFamily: 'DM Sans, sans-serif', fontWeight: 700 }}>
+                  {closingNoRx ? 'Closing…' : '✓ Close Visit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}}
     </Layout>
   )
 }

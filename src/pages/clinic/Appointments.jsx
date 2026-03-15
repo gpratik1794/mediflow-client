@@ -167,11 +167,14 @@ export default function Appointments() {
   async function attemptCallIn(e, apptId, appt) {
     e.stopPropagation()
     const doctorName = appt.doctorName || null
-    const alreadyIn  = appointments.find(a =>
-      a.id !== apptId &&
-      a.status === 'in-consultation' &&
-      (doctorName ? a.doctorName === doctorName : true)
-    )
+    const alreadyIn  = appointments.find(a => {
+      if (a.id === apptId) return false
+      if (a.status !== 'in-consultation') return false
+      // If both have doctorName set, match by doctor
+      // If either has no doctorName, treat as same doctor (single-doctor clinic)
+      if (doctorName && a.doctorName) return a.doctorName === doctorName
+      return true  // no doctorName on one or both → single doctor → block
+    })
     if (alreadyIn) {
       setBlockModal({ blocking: alreadyIn, target: appt })
       return
