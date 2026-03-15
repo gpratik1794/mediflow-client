@@ -404,7 +404,7 @@ export default function Appointments() {
           {/* Status badge */}
           {canCallIn && a.status === 'waiting' ? (
             <span
-              onClick={e => { e.stopPropagation(); quickStatus(e, a.id, 'in-consultation') }}
+              onClick={e => { e.stopPropagation(); attemptCallIn(e, a.id, a) }}
               style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: sc.bg, color: sc.color, border: '1.5px solid var(--amber)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
               {sc.label} →
             </span>

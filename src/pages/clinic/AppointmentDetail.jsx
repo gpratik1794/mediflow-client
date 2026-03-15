@@ -68,6 +68,7 @@ export default function AppointmentDetail() {
   const [paymentStatus, setPaymentStatus] = useState('pending')
   const [savingFee, setSavingFee]     = useState(false)
   const [prescBlockModal, setPrescBlockModal] = useState(false)
+  const [blockingAppt, setBlockingAppt]       = useState(null)
   const [closeNoRxModal, setCloseNoRxModal]   = useState(false)
   const [closeReason, setCloseReason]         = useState('')
   const [closeReasonOther, setCloseReasonOther] = useState('')
@@ -111,6 +112,23 @@ export default function AppointmentDetail() {
   async function handleStatusUpdate(newStatus) {
     // Gate: only doctor/owner can move past waiting
     if (isReceptionist && newStatus !== 'waiting') return
+
+    // Gate: block moving to in-consultation if another patient already there
+    if (newStatus === 'in-consultation') {
+      try {
+        const allToday = await getAppointments(centreId, appt.date)
+        const alreadyIn = allToday.find(a => {
+          if (a.id === id) return false
+          if (a.status !== 'in-consultation') return false
+          if (appt.doctorName && a.doctorName) return a.doctorName === appt.doctorName
+          return true
+        })
+        if (alreadyIn) {
+          setBlockingAppt(alreadyIn)
+          return
+        }
+      } catch (e) { console.warn('Block check failed', e) }
+    }
 
     // Gate: block done without prescription
     if (newStatus === 'done' && appt.status === 'in-consultation') {
@@ -463,6 +481,47 @@ export default function AppointmentDetail() {
       </div>
 
       {/* Prescription block modal */}
+      {/* ── Block In-Consultation Modal ── */}
+      {blockingAppt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.55)', zIndex: 200, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: isMobile ? '20px 20px 0 0' : 20, width: '100%', maxWidth: isMobile ? '100%' : 440, overflow: 'hidden', boxShadow: '0 24px 60px rgba(13,43,62,0.2)' }}>
+            <div style={{ background: 'var(--navy)', padding: '28px 28px 24px' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(245,166,35,0.2)', border: '1.5px solid rgba(245,166,35,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 14 }}>⚠️</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 6 }}>Patient Already In Consultation</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>Complete the current visit before calling in the next patient.</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 16px', marginTop: 16 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{blockingAppt.tokenNumber}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{blockingAppt.patientName}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>{blockingAppt.appointmentTime} · In Consultation</div>
+                </div>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal-mid,#5DCABC)', boxShadow: '0 0 0 4px rgba(93,202,188,0.2)', flexShrink: 0 }} />
+              </div>
+            </div>
+            <div style={{ padding: '24px 28px 28px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--muted)', marginBottom: 14 }}>What would you like to do?</div>
+              {[
+                { icon: '✍️', bg: 'var(--teal-light)', title: `Write Prescription for ${blockingAppt.patientName}`, sub: 'Complete this visit first', action: () => { setBlockingAppt(null); navigate(`/clinic/prescription/new?apptId=${blockingAppt.id}&phone=${blockingAppt.phone}&name=${encodeURIComponent(blockingAppt.patientName)}&age=${blockingAppt.age}&gender=${blockingAppt.gender}`) } },
+                { icon: '✓', bg: '#FFF7ED', title: 'Close Without Prescription', sub: 'Mark current visit done — select a reason', action: () => { setCloseNoRxModal(true); setBlockingAppt(null) } },
+                { icon: '←', bg: 'var(--bg)', title: 'Go Back', sub: 'Return to appointment', action: () => setBlockingAppt(null) },
+              ].map((opt, i) => (
+                <div key={i} onClick={opt.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', border: '1.5px solid var(--border)', borderRadius: 14, cursor: 'pointer', marginBottom: 10, background: 'var(--surface)', transition: 'all 0.18s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--teal)'; e.currentTarget.style.background = 'var(--teal-light)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
+                >
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: opt.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{opt.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>{opt.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{opt.sub}</div>
+                  </div>
+                  <span style={{ color: 'var(--muted)', fontSize: 18 }}>›</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {prescBlockModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
           <div style={{ background: 'white', borderRadius: isMobile ? '20px 20px 0 0' : 16, padding: isMobile ? '28px 20px 36px' : 32, maxWidth: isMobile ? '100%' : 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
