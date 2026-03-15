@@ -58,6 +58,14 @@ export default function Appointments() {
   const isToday  = viewDate === today
   const unsubRef = useRef(null)
 
+  // ── Modal state: block call-in ──
+  const [blockModal, setBlockModal]           = useState(null)  // { blocking: appt, target: appt }
+  // ── Modal state: close without prescription ──
+  const [closeNoRxModal, setCloseNoRxModal]   = useState(null)  // appt to close
+  const [closeReason, setCloseReason]         = useState('')
+  const [closeReasonOther, setCloseReasonOther] = useState('')
+  const [closingNoRx, setClosingNoRx]         = useState(false)
+
   useEffect(() => {
     if (!user || !centreId) return
     setLoading(true)
@@ -124,6 +132,51 @@ export default function Appointments() {
     await updateAppointment(centreId, apptId, { paymentStatus })
     setAppointments(a => a.map(x => x.id === apptId ? { ...x, paymentStatus } : x))
     setMarkingFee(m => ({ ...m, [apptId]: false }))
+  }
+
+  // ── Close appointment without prescription ──
+  async function handleCloseWithoutRx() {
+    if (!closeNoRxModal) return
+    if (!closeReason) { alert('Please select a reason'); return }
+    setClosingNoRx(true)
+    const reason = closeReason === 'Other' ? (closeReasonOther || 'Other') : closeReason
+    await updateAppointment(centreId, closeNoRxModal.id, {
+      status: 'done',
+      closedWithoutPrescription: true,
+      closeReason: reason,
+    })
+    setAppointments(a => a.map(x => x.id === closeNoRxModal.id ? { ...x, status: 'done' } : x))
+    logActivity(centreId, { action: 'appt_closed_no_rx', label: 'Closed Without Prescription', detail: `${closeNoRxModal.patientName} · ${reason}`, by: user?.email || '' })
+    setClosingNoRx(false)
+    setCloseNoRxModal(null)
+    setCloseReason('')
+    setCloseReasonOther('')
+    // If this was triggered from blockModal, also clear that
+    setBlockModal(null)
+  }
+
+  // ── Check if a doctor already has someone in consultation ──
+  function getInConsultationForDoctor(doctorName) {
+    return appointments.find(a =>
+      a.status === 'in-consultation' &&
+      (doctorName ? a.doctorName === doctorName : true)
+    ) || null
+  }
+
+  // ── Attempt to call in — checks for existing in-consultation ──
+  async function attemptCallIn(e, apptId, appt) {
+    e.stopPropagation()
+    const doctorName = appt.doctorName || null
+    const alreadyIn  = appointments.find(a =>
+      a.id !== apptId &&
+      a.status === 'in-consultation' &&
+      (doctorName ? a.doctorName === doctorName : true)
+    )
+    if (alreadyIn) {
+      setBlockModal({ blocking: alreadyIn, target: appt })
+      return
+    }
+    await quickStatus(e, apptId, 'in-consultation')
   }
 
   function getSessionFromTime(timeStr) {
@@ -297,7 +350,7 @@ export default function Appointments() {
         style={{ ...iStyle, background: 'var(--amber-bg)', color: 'var(--amber)' }}>✓ Check In</button>
     )
     if (a.status === 'waiting') return (
-      <button onClick={e => { e.stopPropagation(); quickStatus(e, a.id, 'in-consultation') }}
+      <button onClick={e => attemptCallIn(e, a.id, a)}
         style={{ ...iStyle, background: 'var(--teal-light)', color: 'var(--teal)' }}>→ Call In</button>
     )
     if (a.status === 'in-consultation' && canPrescribe) return (
@@ -442,7 +495,7 @@ export default function Appointments() {
             </div>
           </div>
           <button
-            onClick={async e => { e.stopPropagation(); await quickStatus(e, nextWaiting.id, 'in-consultation') }}
+            onClick={async e => { e.stopPropagation(); await attemptCallIn(e, nextWaiting.id, nextWaiting) }}
             style={{ padding: isMobile ? '10px 14px' : '12px 20px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: isMobile ? 12 : 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}
           >
             Call in →
@@ -591,7 +644,7 @@ export default function Appointments() {
                     </td>
                     <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{a.appointmentTime}</td>
                     <td style={{ padding: '12px 18px', fontSize: 12, color: 'var(--muted)' }}>{a.visitType}</td>
-                    <td style={{ padding: '12px 18px' }} onClick={canCallIn && a.status === 'waiting' ? e => { e.stopPropagation(); quickStatus(e, a.id, 'in-consultation') } : undefined}>
+                    <td style={{ padding: '12px 18px' }} onClick={canCallIn && a.status === 'waiting' ? e => { e.stopPropagation(); attemptCallIn(e, a.id, a) } : undefined}>
                       {canCallIn && a.status === 'waiting' ? (
                         <span title="Click to call in"
                           style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: sc.bg, color: sc.color, cursor: 'pointer', border: '1.5px solid var(--amber)', display: 'inline-block' }}>
@@ -672,6 +725,106 @@ export default function Appointments() {
           </div>
         )
       })()}
+      {/* ── Block Call-In Modal ── */}
+      {blockModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 20, width: '100%', maxWidth: 440, overflow: 'hidden', boxShadow: '0 24px 60px rgba(13,43,62,0.2)' }}>
+            {/* Header */}
+            <div style={{ background: 'var(--navy)', padding: '28px 28px 24px', position: 'relative' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(245,166,35,0.2)', border: '1.5px solid rgba(245,166,35,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 14 }}>⚠️</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 6 }}>Patient Already In Consultation</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                You can only see one patient at a time. Complete the current visit before calling in the next patient.
+              </div>
+              {/* Currently consulting pill */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 16px', marginTop: 16 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                  {blockModal.blocking.tokenNumber}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{blockModal.blocking.patientName}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>{blockModal.blocking.appointmentTime} · In Consultation</div>
+                </div>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal-mid,#5DCABC)', boxShadow: '0 0 0 4px rgba(93,202,188,0.2)', flexShrink: 0 }} />
+              </div>
+            </div>
+            {/* Options */}
+            <div style={{ padding: '24px 28px 28px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--muted)', marginBottom: 14 }}>What would you like to do?</div>
+              {[
+                { icon: '✍️', bg: 'var(--teal-light)', title: `Write Prescription for ${blockModal.blocking.patientName}`, sub: 'Open prescription writer and complete this visit first', action: () => { setBlockModal(null); navigate(`/clinic/prescription/new?apptId=${blockModal.blocking.id}&phone=${blockModal.blocking.phone}&name=${encodeURIComponent(blockModal.blocking.patientName)}&age=${blockModal.blocking.age}&gender=${blockModal.blocking.gender}`) } },
+                { icon: '✓', bg: '#FFF7ED', title: 'Close Without Prescription', sub: 'Mark current visit as done — select a reason', action: () => { setCloseNoRxModal(blockModal.blocking); setBlockModal(null) } },
+                { icon: '←', bg: 'var(--bg)', title: 'Go Back', sub: 'Return to appointments list', action: () => setBlockModal(null) },
+              ].map((opt, i) => (
+                <div key={i} onClick={opt.action} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', border: '1.5px solid var(--border)', borderRadius: 14, cursor: 'pointer', marginBottom: 10, transition: 'all 0.18s', background: 'var(--surface)' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--teal)'; e.currentTarget.style.background = 'var(--teal-light)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
+                >
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: opt.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{opt.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>{opt.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{opt.sub}</div>
+                  </div>
+                  <span style={{ color: 'var(--muted)', fontSize: 18 }}>›</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Close Without Prescription Modal ── */}
+      {closeNoRxModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.55)', zIndex: 1000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: isMobile ? '20px 20px 0 0' : 20, width: '100%', maxWidth: isMobile ? '100%' : 440, overflow: 'hidden', boxShadow: '0 24px 60px rgba(13,43,62,0.2)' }}>
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg, #7C2D12, #9A3412)', padding: '28px 28px 24px' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(249,115,22,0.2)', border: '1.5px solid rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 14 }}>📋</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 6 }}>Close Without Prescription</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                Please select a reason — this will be saved to <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{closeNoRxModal.patientName}</strong>'s appointment record.
+              </div>
+            </div>
+            <div style={{ padding: '24px 28px 28px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--muted)', marginBottom: 14 }}>Select reason</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                {['Advice Only', 'Referred Out', 'Follow-up Only', 'No Medication Needed', 'Other'].map(r => (
+                  <button key={r} onClick={() => setCloseReason(r)} style={{
+                    padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${closeReason === r ? '#F97316' : 'var(--border)'}`,
+                    background: closeReason === r ? '#FFF7ED' : 'var(--surface)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: closeReason === r ? 600 : 500,
+                    color: closeReason === r ? '#9A3412' : 'var(--slate)', fontFamily: 'DM Sans, sans-serif',
+                    textAlign: 'center', transition: 'all 0.15s',
+                    gridColumn: r === 'Other' ? '1 / -1' : 'auto',
+                  }}>
+                    {closeReason === r ? '✓ ' : ''}{r}
+                  </button>
+                ))}
+              </div>
+              {closeReason === 'Other' && (
+                <input value={closeReasonOther} onChange={e => setCloseReasonOther(e.target.value)}
+                  placeholder="Type reason here…"
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #F97316', borderRadius: 10, fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--navy)', outline: 'none', marginBottom: 14, boxSizing: 'border-box' }} />
+              )}
+              <div style={{ display: 'flex', gap: 10, background: 'var(--amber-bg)', border: '1px solid var(--amber)', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: 12, color: '#92400E', lineHeight: 1.6 }}>
+                <span>⚠️</span>
+                <span>This appointment will be marked as <strong>Done</strong> without a prescription. This action cannot be undone.</span>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setCloseNoRxModal(null); setCloseReason(''); setCloseReasonOther('') }}
+                  style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', fontWeight: 500 }}>
+                  ← Back
+                </button>
+                <button onClick={handleCloseWithoutRx} disabled={closingNoRx || !closeReason}
+                  style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: closeReason ? '#F97316' : 'var(--border)', color: closeReason ? '#fff' : 'var(--muted)', cursor: closeReason ? 'pointer' : 'not-allowed', fontSize: 13, fontFamily: 'DM Sans, sans-serif', fontWeight: 700, transition: 'all 0.18s' }}>
+                  {closingNoRx ? 'Closing…' : '✓ Close Visit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </Layout>
   )
 }

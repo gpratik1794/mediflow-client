@@ -68,6 +68,10 @@ export default function AppointmentDetail() {
   const [paymentStatus, setPaymentStatus] = useState('pending')
   const [savingFee, setSavingFee]     = useState(false)
   const [prescBlockModal, setPrescBlockModal] = useState(false)
+  const [closeNoRxModal, setCloseNoRxModal]   = useState(false)
+  const [closeReason, setCloseReason]         = useState('')
+  const [closeReasonOther, setCloseReasonOther] = useState('')
+  const [closingNoRx, setClosingNoRx]         = useState(false)
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   useEffect(() => {
@@ -157,6 +161,21 @@ export default function AppointmentDetail() {
     setAppt(a => ({ ...a, consultationFee: fee, paymentStatus }))
     setToast({ message: 'Fee updated', type: 'success' })
     setSavingFee(false)
+  }
+
+  async function handleCloseWithoutRx() {
+    if (!closeReason) { alert('Please select a reason'); return }
+    setClosingNoRx(true)
+    const reason = closeReason === 'Other' ? (closeReasonOther || 'Other') : closeReason
+    await updateAppointment(centreId, id, { status: 'done', closedWithoutPrescription: true, closeReason: reason })
+    setAppt(a => ({ ...a, status: 'done' }))
+    logActivity(centreId, { action: 'appt_closed_no_rx', label: 'Closed Without Prescription', detail: `${appt.patientName} · ${reason}`, by: user?.email || '' })
+    setClosingNoRx(false)
+    setCloseNoRxModal(false)
+    setCloseReason('')
+    setCloseReasonOther('')
+    setPrescBlockModal(false)
+    setToast({ message: 'Visit closed without prescription', type: 'success' })
   }
 
   if (loading) return <Layout title="Appointment"><Empty icon="⏳" message="Loading…" /></Layout>
@@ -446,18 +465,77 @@ export default function AppointmentDetail() {
       {/* Prescription block modal */}
       {prescBlockModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
-          <div style={{ background: 'white', borderRadius: isMobile ? '20px 20px 0 0' : 16, padding: isMobile ? '28px 20px 36px' : 32, maxWidth: isMobile ? '100%' : 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>✍</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Write Prescription First</div>
-            <div style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.7, marginBottom: 24 }}>
+          <div style={{ background: 'white', borderRadius: isMobile ? '20px 20px 0 0' : 16, padding: isMobile ? '28px 20px 36px' : 32, maxWidth: isMobile ? '100%' : 440, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ fontSize: 36, textAlign: 'center', marginBottom: 12 }}>✍</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 8, textAlign: 'center' }}>Prescription Required</div>
+            <div style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.7, marginBottom: 24, textAlign: 'center' }}>
               This appointment cannot be marked as <strong>Done</strong> until a prescription has been saved for <strong>{appt.patientName}</strong>.
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setPrescBlockModal(false)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)' }}>Not Now</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button onClick={() => { setPrescBlockModal(false); navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`) }}
-                style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif' }}>
+                style={{ padding: '13px', borderRadius: 12, border: 'none', background: 'var(--teal)', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif' }}>
                 ✍ Write Prescription Now
               </button>
+              <button onClick={() => { setPrescBlockModal(false); setCloseNoRxModal(true) }}
+                style={{ padding: '13px', borderRadius: 12, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif' }}>
+                Close Without Prescription
+              </button>
+              <button onClick={() => setPrescBlockModal(false)}
+                style={{ padding: '13px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)' }}>
+                Not Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Close Without Prescription Modal ── */}
+      {closeNoRxModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.55)', zIndex: 300, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: isMobile ? '20px 20px 0 0' : 20, width: '100%', maxWidth: isMobile ? '100%' : 440, overflow: 'hidden', boxShadow: '0 24px 60px rgba(13,43,62,0.2)' }}>
+            <div style={{ background: 'linear-gradient(135deg, #7C2D12, #9A3412)', padding: '28px 28px 24px' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(249,115,22,0.2)', border: '1.5px solid rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 14 }}>📋</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 6 }}>Close Without Prescription</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                Please select a reason — this will be saved to <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{appt.patientName}</strong>'s appointment record.
+              </div>
+            </div>
+            <div style={{ padding: '24px 28px 28px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--muted)', marginBottom: 14 }}>Select reason</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                {['Advice Only', 'Referred Out', 'Follow-up Only', 'No Medication Needed', 'Other'].map(r => (
+                  <button key={r} onClick={() => setCloseReason(r)} style={{
+                    padding: '10px 12px', borderRadius: 10,
+                    border: `1.5px solid ${closeReason === r ? '#F97316' : 'var(--border)'}`,
+                    background: closeReason === r ? '#FFF7ED' : 'var(--surface)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: closeReason === r ? 600 : 500,
+                    color: closeReason === r ? '#9A3412' : 'var(--slate)',
+                    fontFamily: 'DM Sans, sans-serif', textAlign: 'center', transition: 'all 0.15s',
+                    gridColumn: r === 'Other' ? '1 / -1' : 'auto', minHeight: 44,
+                  }}>
+                    {closeReason === r ? '✓ ' : ''}{r}
+                  </button>
+                ))}
+              </div>
+              {closeReason === 'Other' && (
+                <input value={closeReasonOther} onChange={e => setCloseReasonOther(e.target.value)}
+                  placeholder="Type reason here…"
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #F97316', borderRadius: 10, fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--navy)', outline: 'none', marginBottom: 14, boxSizing: 'border-box' }} />
+              )}
+              <div style={{ display: 'flex', gap: 10, background: 'var(--amber-bg)', border: '1px solid var(--amber)', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: 12, color: '#92400E', lineHeight: 1.6 }}>
+                <span>⚠️</span>
+                <span>This appointment will be marked as <strong>Done</strong> without a prescription. This cannot be undone.</span>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setCloseNoRxModal(false); setCloseReason(''); setCloseReasonOther('') }}
+                  style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', fontWeight: 500 }}>
+                  ← Back
+                </button>
+                <button onClick={handleCloseWithoutRx} disabled={closingNoRx || !closeReason}
+                  style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: closeReason ? '#F97316' : 'var(--border)', color: closeReason ? '#fff' : 'var(--muted)', cursor: closeReason ? 'pointer' : 'not-allowed', fontSize: 13, fontFamily: 'DM Sans, sans-serif', fontWeight: 700 }}>
+                  {closingNoRx ? 'Closing…' : '✓ Close Visit'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
