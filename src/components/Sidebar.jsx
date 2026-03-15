@@ -119,10 +119,11 @@ export default function Sidebar({ isMobile, isOpen, onClose }) {
         top: 0,
         left: 0,
         zIndex: 100,
-        // Slide in/out
         transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
         transition: 'transform 0.25s ease',
         boxShadow: isOpen ? '4px 0 24px rgba(0,0,0,0.25)' : 'none',
+        // Prevent any pixel from showing when closed
+        visibility: isOpen ? 'visible' : 'hidden',
       }
     : {
         width: 'var(--sidebar-w)',
