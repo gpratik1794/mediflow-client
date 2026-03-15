@@ -42,6 +42,13 @@ export default function NewAppointment() {
   const centreId = profile?._centreId || user?.uid
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const [loading, setLoading]             = useState(false)
   const [toast, setToast]                 = useState(null)
   const [searchResults, setSearchResults] = useState([])
@@ -248,7 +255,7 @@ export default function NewAppointment() {
   return (
     <Layout title="Book Appointment">
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, maxWidth: 860 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 320px', gap: 20, maxWidth: 860 }}>
           <Card>
             <CardHeader title="Patient Details" sub="Enter phone number — returning patients auto-fill" />
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -357,7 +364,7 @@ export default function NewAppointment() {
                     </div>
                   ) : null}
                   {(doctors.length === 0 || form.doctorName) && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : '1fr 1fr', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
                     {TIME_SLOTS.map(slot => {
                       const isBooked = slot !== 'Walk-in (no slot)' && bookedSlots.includes(slot)
                       const isSel    = form.appointmentTime === slot && slot !== ''
@@ -379,7 +386,7 @@ export default function NewAppointment() {
                         <button key={slot} type="button"
                           onClick={() => !isDisabled && setForm(f => ({ ...f, appointmentTime: slot }))}
                           disabled={isDisabled}
-                          style={{ padding: '7px 4px', borderRadius: 8, border: '1.5px solid', borderColor: isSel ? 'var(--teal)' : 'var(--border)', background: isSel ? 'var(--teal-light)' : isDisabled ? 'var(--bg)' : 'none', color: isSel ? 'var(--teal)' : isDisabled ? 'var(--muted)' : 'var(--slate)', fontSize: 11, cursor: isDisabled ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: isSel ? 600 : 400, opacity: isDisabled ? 0.4 : 1 }}>
+                          style={{ padding: isMobile ? '10px 4px' : '7px 4px', borderRadius: 8, border: '1.5px solid', borderColor: isSel ? 'var(--teal)' : 'var(--border)', background: isSel ? 'var(--teal-light)' : isDisabled ? 'var(--bg)' : 'none', color: isSel ? 'var(--teal)' : isDisabled ? 'var(--muted)' : 'var(--slate)', fontSize: isMobile ? 12 : 11, cursor: isDisabled ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: isSel ? 600 : 400, opacity: isDisabled ? 0.4 : 1 }}>
                           {slot}
                           {isBooked && !isPast && <span style={{ display: 'block', fontSize: 9, color: 'var(--red)', marginTop: 1 }}>Booked</span>}
                           {isPast && <span style={{ display: 'block', fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>Past</span>}

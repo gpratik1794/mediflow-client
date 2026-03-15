@@ -22,6 +22,13 @@ export default function PrescriptionWriter() {
   const initAge   = searchParams.get('age')    || ''
   const initGender= searchParams.get('gender') || ''
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const [loading, setLoading]     = useState(false)
   const [toast, setToast]         = useState(null)
   const [medicines, setMedicines] = useState([])
@@ -272,7 +279,7 @@ export default function PrescriptionWriter() {
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
                 Auto-send a WhatsApp to doctor once receptionist marks fees, or on a timer:
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                 {[
                   { key: 'auto15', icon: '⏱', label: 'Auto 15 min', sub: 'If still pending' },
                   { key: 'auto30', icon: '⏱', label: 'Auto 30 min', sub: 'Longer wait' },
@@ -371,7 +378,7 @@ export default function PrescriptionWriter() {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
       {opts.map(o => (
         <button key={o} type="button" onClick={() => set(o)}
-          style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: `1.5px solid ${val === o ? 'var(--teal)' : 'var(--border)'}`, background: val === o ? 'var(--teal-light)' : 'none', color: val === o ? 'var(--teal)' : 'var(--slate)' }}>
+          style={{ padding: isMobile ? '7px 12px' : '4px 10px', borderRadius: 20, fontSize: isMobile ? 13 : 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', border: `1.5px solid ${val === o ? 'var(--teal)' : 'var(--border)'}`, background: val === o ? 'var(--teal-light)' : 'none', color: val === o ? 'var(--teal)' : 'var(--slate)', minHeight: isMobile ? 40 : 'auto' }}>
           {o}
         </button>
       ))}
@@ -387,14 +394,14 @@ export default function PrescriptionWriter() {
         </div>
       }
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 340px', gap: 20 }}>
         {/* LEFT */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Patient */}
           <Card>
             <CardHeader title="Patient" />
-            <div style={{ padding: '16px 22px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div style={{ padding: '16px 22px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
               {[
                 { label: 'Full Name', key: 'name', placeholder: 'Patient name' },
                 { label: 'Phone', key: 'phone', placeholder: '10-digit mobile' },

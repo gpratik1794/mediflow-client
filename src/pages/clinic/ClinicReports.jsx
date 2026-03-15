@@ -70,16 +70,22 @@ function SectionHead({ title, icon }) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ClinicReports() {
   const { user, profile } = useAuth()
-  const [reportTab, setReportTab] = useState('analytics')  // 'analytics' | 'daily'
+  const [reportTab, setReportTab] = useState('analytics')
   const [preset, setPreset]     = useState('today')
   const [custom, setCustom]     = useState({ from: '', to: '' })
   const [appts, setAppts]       = useState([])
   const [loading, setLoading]   = useState(false)
-  // ── Daily sessions ──
   const [dailyAppts, setDailyAppts]   = useState([])
   const [dailyLoading, setDailyLoading] = useState(false)
   const [expandedDay, setExpandedDay] = useState(null)
   const [dailyMonth, setDailyMonth]   = useState(() => format(new Date(), 'yyyy-MM'))
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const range = getRange(preset, custom)
 
@@ -238,21 +244,23 @@ export default function ClinicReports() {
       {reportTab === 'daily' && (
         <>
           {/* Month navigator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
             <button onClick={() => {
               const d = new Date(dailyMonth + '-01'); d.setMonth(d.getMonth() - 1)
               setDailyMonth(format(d, 'yyyy-MM')); setExpandedDay(null)
-            }} style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif' }}>‹</button>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', minWidth: 140, textAlign: 'center' }}>
+            }} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, color: 'var(--slate)', minHeight: 44 }}>‹</button>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', flex: 1, textAlign: 'center' }}>
               {format(new Date(dailyMonth + '-01'), 'MMMM yyyy')}
             </div>
             <button onClick={() => {
               const d = new Date(dailyMonth + '-01'); d.setMonth(d.getMonth() + 1)
               setDailyMonth(format(d, 'yyyy-MM')); setExpandedDay(null)
-            }} style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 14, color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif' }}>›</button>
-            <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>
-              {dailySummary.length} day{dailySummary.length !== 1 ? 's' : ''} with activity
-            </div>
+            }} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, color: 'var(--slate)', minHeight: 44 }}>›</button>
+            {!isMobile && (
+              <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>
+                {dailySummary.length} day{dailySummary.length !== 1 ? 's' : ''} with activity
+              </div>
+            )}
           </div>
 
           {dailyLoading ? <Empty icon="⏳" message="Loading sessions…" /> :
@@ -296,7 +304,7 @@ export default function ClinicReports() {
                     {isExpanded && (
                       <div style={{ background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
                         {/* Summary stats */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0, borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(5, 1fr)', gap: 0, borderBottom: '1px solid var(--border)' }}>
                           {[
                             { label: 'Total',     value: day.total,      color: 'var(--navy)' },
                             { label: 'Seen',      value: day.done,       color: 'var(--green)' },
@@ -479,7 +487,7 @@ export default function ClinicReports() {
           )}
 
           {/* ── Slot Utilisation & Peak Hours ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20, marginBottom: 20 }}>
 
             {/* Peak slots */}
             <Card>
