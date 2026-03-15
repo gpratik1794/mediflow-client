@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../utils/AuthContext'
 import Layout from '../../components/Layout'
 import { Card, CardHeader, Btn, Toast } from '../../components/UI'
-import { createAppointment, getNextToken, getAppointments, upsertClinicPatient , logActivity } from '../../firebase/clinicDb'
+import { createAppointment, getNextToken, getAppointments, updateAppointment, upsertClinicPatient , logActivity } from '../../firebase/clinicDb'
 import { sendCampaign } from '../../firebase/whatsapp'
 import { searchPatients } from '../../firebase/db'
 import { format } from 'date-fns'
@@ -137,17 +137,77 @@ export default function NewAppointment() {
         : EVENING_SLOTS.includes(form.appointmentTime)
           ? 'evening'
           : currentMins < 14 * 60 ? 'morning' : 'evening'
+
+      // Step 1: Create the appointment with a temporary token
       const tokenNumber = await getNextToken(centreId, form.date, slotSession, form.appointmentTime)
       const apptId = await createAppointment(centreId, { ...form, tokenNumber, session: slotSession, status: 'scheduled' })
-      logActivity(centreId, { action: 'appt_created', label: 'Appointment Created', detail: `${form.patientName} · ${form.appointmentTime || 'Walk-in'} · Token #${tokenNumber}`, by: user?.email || '' })
-      await upsertClinicPatient(centreId, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
-      if (profile?.whatsappCampaigns?.length) {
-        sendCampaign(profile.whatsappCampaigns, 'appt_confirm', form.phone,
-          [form.patientName, profile?.ownerName || 'Doctor', form.date, form.appointmentTime],
-          null, { centreId: centreId, patientName: form.patientName, apptId })
+
+      // Step 2: Re-tokenize ALL appointments in this session by slot time position
+      // This fixes any existing appointments whose tokens may now be wrong
+      // (e.g. someone booked 11:10 first → token 1, now someone books 11:00 → they get token 1,
+      //  but 11:10 still shows token 1. Re-tokenize fixes 11:10 → token 2)
+      try {
+        const allAppts = await getAppointments(centreId, form.date)
+        const sessionAppts = allAppts.filter(a => {
+          if (a.status === 'cancelled') return false
+          const sess = a.session || (a.appointmentTime && a.appointmentTime !== 'Walk-in (no slot)'
+            ? ((() => { const p = a.appointmentTime.trim().split(' '); let h = Number(p[0].split(':')[0]); if (p[1]==='PM'&&h!==12) h+=12; if (p[1]==='AM'&&h===12) h=0; return h < 14 ? 'morning' : 'evening' })())
+            : slotSession)
+          return sess === slotSession
+        })
+
+        // Sort by slot time
+        const toMins = t => {
+          if (!t || t === 'Walk-in (no slot)') return 9999
+          const p = t.trim().split(' '); let h = Number(p[0].split(':')[0]); const m = Number(p[0].split(':')[1]||0)
+          if (p[1]==='PM'&&h!==12) h+=12; if (p[1]==='AM'&&h===12) h=0
+          return h * 60 + m
+        }
+
+        // Get unique slot times sorted chronologically
+        const slottedAppts = sessionAppts.filter(a => a.appointmentTime && a.appointmentTime !== 'Walk-in (no slot)')
+        const walkinAppts  = sessionAppts.filter(a => !a.appointmentTime || a.appointmentTime === 'Walk-in (no slot)')
+
+        const uniqueSlots = [...new Set(slottedAppts.map(a => a.appointmentTime))].sort((a,b) => toMins(a) - toMins(b))
+
+        // Assign correct token to each appointment
+        const updates = []
+        slottedAppts.forEach(a => {
+          const correctToken = uniqueSlots.indexOf(a.appointmentTime) + 1
+          if (a.tokenNumber !== correctToken) updates.push({ id: a.id, tokenNumber: correctToken })
+        })
+        const walkinOffset = uniqueSlots.length
+        walkinAppts.forEach((a, i) => {
+          const correctToken = walkinOffset + i + 1
+          if (a.tokenNumber !== correctToken) updates.push({ id: a.id, tokenNumber: correctToken })
+        })
+
+        if (updates.length > 0) {
+          await Promise.all(updates.map(u => updateAppointment(centreId, u.id, { tokenNumber: u.tokenNumber })))
+        }
+
+        // Get the final token for this new appointment
+        const allAppts2 = await getAppointments(centreId, form.date)
+        const thisAppt  = allAppts2.find(a => a.id === apptId)
+        const finalToken = thisAppt?.tokenNumber || tokenNumber
+
+        logActivity(centreId, { action: 'appt_created', label: 'Appointment Created', detail: `${form.patientName} · ${form.appointmentTime || 'Walk-in'} · Token #${finalToken}`, by: user?.email || '' })
+        await upsertClinicPatient(centreId, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
+        if (profile?.whatsappCampaigns?.length) {
+          sendCampaign(profile.whatsappCampaigns, 'appt_confirm', form.phone,
+            [form.patientName, profile?.ownerName || 'Doctor', form.date, form.appointmentTime],
+            null, { centreId: centreId, patientName: form.patientName, apptId })
+        }
+        setToast({ message: `Token #${finalToken} booked!`, type: 'success' })
+        setTimeout(() => navigate(`/clinic/appointments/${apptId}`), 1200)
+      } catch (reTokenErr) {
+        console.error('Re-tokenize failed:', reTokenErr)
+        // Still navigate even if re-tokenize fails
+        logActivity(centreId, { action: 'appt_created', label: 'Appointment Created', detail: `${form.patientName} · ${form.appointmentTime || 'Walk-in'} · Token #${tokenNumber}`, by: user?.email || '' })
+        await upsertClinicPatient(centreId, { name: form.patientName, phone: form.phone, age: form.age, dob: form.dob, gender: form.gender })
+        setToast({ message: `Token #${tokenNumber} booked!`, type: 'success' })
+        setTimeout(() => navigate(`/clinic/appointments/${apptId}`), 1200)
       }
-      setToast({ message: `Token #${tokenNumber} booked!`, type: 'success' })
-      setTimeout(() => navigate(`/clinic/appointments/${apptId}`), 1200)
     } catch (err) {
       setToast({ message: 'Booking failed. Try again.', type: 'error' })
     }
