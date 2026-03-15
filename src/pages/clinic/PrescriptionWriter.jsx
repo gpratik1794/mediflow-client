@@ -151,10 +151,13 @@ export default function PrescriptionWriter() {
         }
       }
 
-      // Auto-tag
+      // Auto-tag from diagnosis + medicines
       if (patient.phone) {
         const autoTags = deriveTagsFromPrescription({ diagnosis, medicines: selectedMeds })
         const allNewTags = Array.from(new Set([...autoTags, ...manualTags]))
+        // Also add doctor tag — e.g. "Dr. Milind" — so patients can be filtered by doctor in Marketing
+        const doctorName = profile?.ownerName || profile?.doctors?.[0]?.name || ''
+        if (doctorName) allNewTags.push(doctorName)
         if (allNewTags.length) { await updatePatientTags(centreId, patient.phone, allNewTags); setSavedTags(allNewTags) }
       }
 
@@ -642,62 +645,74 @@ export default function PrescriptionWriter() {
           </Card>
 
           {/* Spacer so content isn't hidden behind floating bar */}
-          <div style={{ height: isMobile ? 90 : 0 }} />
+          <div style={{ height: isMobile ? 90 : 80 }} />
         </div>
       </div>
 
-      {/* ── Floating Action Bar (mobile) ── */}
-      {isMobile && (
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
-          background: 'var(--surface)',
-          borderTop: '1px solid var(--border)',
-          boxShadow: '0 -8px 32px rgba(13,43,62,0.10)',
-          padding: '10px 16px 24px',
-          zIndex: 100,
-        }}>
-          {/* Primary: Save */}
-          <button onClick={handleSave} disabled={loading}
-            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 8, opacity: loading ? 0.7 : 1 }}>
-            {loading ? 'Saving…' : '💾 Save & Complete Visit'}
-          </button>
-          {/* Secondary pills */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+      {/* ── Floating Action Bar ── */}
+      <div style={{
+        position: 'fixed',
+        bottom: isMobile ? 0 : 20,
+        left: isMobile ? 0 : '50%',
+        right: isMobile ? 0 : 'auto',
+        transform: isMobile ? 'none' : 'translateX(-50%)',
+        width: isMobile ? '100%' : 'auto',
+        minWidth: isMobile ? 'auto' : 460,
+        maxWidth: isMobile ? '100%' : 580,
+        background: 'var(--surface)',
+        borderTop: isMobile ? '1px solid var(--border)' : 'none',
+        border: isMobile ? 'none' : '1.5px solid var(--border)',
+        borderRadius: isMobile ? 0 : 16,
+        boxShadow: isMobile ? '0 -8px 32px rgba(13,43,62,0.10)' : '0 8px 32px rgba(13,43,62,0.18)',
+        padding: isMobile ? '10px 16px 28px' : '10px 16px',
+        zIndex: 100,
+      }}>
+        {isMobile ? (
+          <>
+            <button onClick={handleSave} disabled={loading}
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 8, opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Saving…' : '💾 Save & Complete Visit'}
+            </button>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+              {apptId && (
+                <button onClick={() => setShowCloseNoRx(true)}
+                  style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid rgba(249,115,22,0.4)', background: '#FFF7ED', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: '#9A3412', cursor: 'pointer' }}>
+                  ✗ Close Without Rx
+                </button>
+              )}
+              <button onClick={() => setLabTests(t => [...t, { name: '', instructions: '' }])}
+                style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
+                🧪 + Lab Test
+              </button>
+              <button onClick={handlePrint}
+                style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
+                🖨 Print
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={handleSave} disabled={loading}
+              style={{ flex: 1, padding: '10px 20px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, whiteSpace: 'nowrap' }}>
+              {loading ? 'Saving…' : '💾 Save & Complete Visit'}
+            </button>
             {apptId && (
               <button onClick={() => setShowCloseNoRx(true)}
-                style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid rgba(249,115,22,0.4)', background: '#FFF7ED', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: '#9A3412', cursor: 'pointer' }}>
-                ✗ Close Without Rx
+                style={{ padding: '10px 14px', borderRadius: 10, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>
+                Close Without Rx
               </button>
             )}
             <button onClick={() => setLabTests(t => [...t, { name: '', instructions: '' }])}
-              style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
-              🧪 + Lab Test
+              style={{ padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              🧪 Lab Test
             </button>
             <button onClick={handlePrint}
-              style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
+              style={{ padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               🖨 Print
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Desktop buttons — shown only on desktop */}
-      {!isMobile && (
-        <div style={{ position: 'fixed', bottom: 24, right: 32, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 100 }}>
-          <Btn onClick={handleSave} disabled={loading} style={{ justifyContent: 'center', minWidth: 220 }}>
-            {loading ? 'Saving…' : '💾 Save & Complete Visit'}
-          </Btn>
-          {apptId && (
-            <button onClick={() => setShowCloseNoRx(true)}
-              style={{ padding: '9px 16px', borderRadius: 10, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
-              Close Without Prescription
-            </button>
-          )}
-          <Btn variant="ghost" onClick={handlePrint} style={{ justifyContent: 'center' }}>
-            🖨 Print Prescription
-          </Btn>
-        </div>
-      )}
+        )}
+      </div>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 

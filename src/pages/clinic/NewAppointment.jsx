@@ -57,6 +57,11 @@ export default function NewAppointment() {
   const submittingRef                     = useRef(false)
   const today = format(new Date(), 'yyyy-MM-dd')
 
+  // ── Duplicate appointment detection ──────────────────────────────────────
+  const [dupAppt, setDupAppt]           = useState(null)   // existing appt for this phone today
+  const [dupChoice, setDupChoice]       = useState(null)   // null | 'relative' | 'same' | 'reschedule'
+  const [rescheduling, setRescheduling] = useState(false)
+
   const [form, setForm] = useState({
     patientName: '', phone: searchParams.get('phone') || '',
     age: '', dob: '', gender: '',
@@ -90,6 +95,17 @@ export default function NewAppointment() {
       const results = await searchPatients(centreId, phone)
       if (results.length === 1) { fillPatient(results[0]) }
       else setSearchResults(results)
+
+      // ── Check for duplicate appointment today ──
+      if (form.date === today) {
+        const todayAppts = await getAppointments(centreId, today)
+        const existing = todayAppts.find(a =>
+          a.phone?.replace(/\D/g,'').slice(-10) === phone.slice(-10) &&
+          a.status !== 'cancelled' && a.status !== 'done'
+        )
+        if (existing) { setDupAppt(existing); setDupChoice(null) }
+        else setDupAppt(null)
+      }
     } catch (e) { console.error(e) }
     setSearching(false)
   }
@@ -98,7 +114,24 @@ export default function NewAppointment() {
     const phone = e.target.value.replace(/\D/g, '').slice(0, 10)
     setForm(f => ({ ...f, phone }))
     setSearchResults([])
+    setDupAppt(null); setDupChoice(null)
     if (phone.length === 10) doSearch(phone)
+  }
+
+  async function handleReschedule() {
+    if (!dupAppt) return
+    setRescheduling(true)
+    try {
+      await updateAppointment(centreId, dupAppt.id, { status: 'rescheduled' })
+      // Free up the slot — update bookedSlots
+      setBookedSlots(prev => prev.filter(s => s !== dupAppt.appointmentTime))
+      setDupChoice('same')
+      setDupAppt(null)
+      setToast({ message: `Previous slot (${dupAppt.appointmentTime}) freed — book new slot below.`, type: 'success' })
+    } catch (e) {
+      setToast({ message: 'Reschedule failed. Try again.', type: 'error' })
+    }
+    setRescheduling(false)
   }
 
   function fillPatient(p) {
@@ -283,6 +316,39 @@ export default function NewAppointment() {
                   </div>
                 )}
               </div>
+
+              {/* ── Duplicate appointment warning ── */}
+              {dupAppt && !dupChoice && (
+                <div style={{ background: '#FFFBEB', border: '1.5px solid #F59E0B', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>
+                    ⚠️ {dupAppt.patientName} already has an appointment today
+                  </div>
+                  <div style={{ fontSize: 12, color: '#92400E', marginBottom: 12, lineHeight: 1.6 }}>
+                    {dupAppt.appointmentTime !== 'Walk-in (no slot)' ? `🕐 ${dupAppt.appointmentTime}` : '🚶 Walk-in'} · Token #{dupAppt.tokenNumber} · Status: <strong style={{ textTransform: 'capitalize' }}>{dupAppt.status}</strong>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>What would you like to do?</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <button type="button" onClick={() => { setDupChoice('relative'); setForm(f => ({ ...f, patientName: '', age: '', gender: '' })) }} style={{ padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>👨‍👩‍👧 Book for a relative / friend</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Same phone, different name — new patient entry</div>
+                    </button>
+                    <button type="button" onClick={() => setDupChoice('same')} style={{ padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>📅 Book anyway (different slot)</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Continue booking — existing appointment stays</div>
+                    </button>
+                    <button type="button" onClick={handleReschedule} disabled={rescheduling} style={{ padding: '10px 14px', borderRadius: 10, border: '1.5px solid #0B9E8A', background: 'var(--teal-light)', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'left', opacity: rescheduling ? 0.6 : 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--teal)' }}>{rescheduling ? '⏳ Rescheduling…' : '🔄 Reschedule'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--teal)', marginTop: 2 }}>Frees the {dupAppt.appointmentTime !== 'Walk-in (no slot)' ? dupAppt.appointmentTime : 'walk-in'} slot — pick a new time below</div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {dupChoice === 'relative' && (
+                <div style={{ background: '#F0FDF4', border: '1.5px solid #6EE7B7', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#065F46' }}>
+                  ✓ Booking for a relative/friend on the same number. Enter their details below.
+                </div>
+              )}
 
               {/* Name */}
               <div>

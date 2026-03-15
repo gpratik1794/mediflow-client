@@ -447,32 +447,51 @@ export default function AppointmentDetail() {
 
       {/* ── Spacer so content isn't hidden behind floating bar ── */}
       {canPrescribe && appt.status === 'in-consultation' && (
-        <div style={{ height: isMobile ? 100 : 0 }} />
+        <div style={{ height: isMobile ? 100 : 80 }} />
       )}
 
       {/* ── Floating Action Bar — doctor, in-consultation only ── */}
       {canPrescribe && appt.status === 'in-consultation' && (
         <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
+          position: 'fixed',
+          bottom: isMobile ? 0 : 20,
+          left: isMobile ? 0 : '50%',
+          right: isMobile ? 0 : 'auto',
+          transform: isMobile ? 'none' : 'translateX(-50%)',
+          width: isMobile ? '100%' : 'auto',
+          minWidth: isMobile ? 'auto' : 420,
+          maxWidth: isMobile ? '100%' : 520,
           background: 'var(--surface)',
-          borderTop: '1px solid var(--border)',
-          boxShadow: '0 -8px 32px rgba(13,43,62,0.10)',
-          padding: '10px 16px 24px',
+          borderTop: isMobile ? '1px solid var(--border)' : 'none',
+          border: isMobile ? 'none' : '1.5px solid var(--border)',
+          borderRadius: isMobile ? 0 : 16,
+          boxShadow: isMobile ? '0 -8px 32px rgba(13,43,62,0.10)' : '0 8px 32px rgba(13,43,62,0.18)',
+          padding: isMobile ? '10px 16px 28px' : '12px 20px',
           zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
         }}>
           {/* Primary */}
           <button
             onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}
-            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', marginBottom: 8 }}>
+            style={{ flex: isMobile ? 'none' : 1, width: isMobile ? '100%' : 'auto', padding: isMobile ? '13px' : '10px 20px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: isMobile ? 14 : 13, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             ✍ Write Prescription
           </button>
           {/* Secondary pill */}
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
+          {!isMobile ? (
             <button onClick={() => setCloseNoRxModal(true)}
-              style={{ padding: '7px 20px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
-              ✓ Close Visit Without Prescription
+              style={{ padding: '10px 16px', borderRadius: 10, border: '1.5px solid #F97316', background: '#FFF7ED', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', color: '#9A3412', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              ✓ Close Without Rx
             </button>
-          </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+              <button onClick={() => setCloseNoRxModal(true)}
+                style={{ padding: '7px 20px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
+                ✓ Close Visit Without Prescription
+              </button>
+            </div>
+          )}
         </div>
       )}
       {/* ── Block In-Consultation Modal ── */}
