@@ -112,6 +112,9 @@ export default function Layout({ children, title, action }) {
         <div style={{
           padding: isMobile ? '16px' : '28px 32px',
           flex: 1,
+          minWidth: 0,       // prevent flex child from overflowing
+          maxWidth: '100%',  // never exceed viewport
+          overflowX: 'hidden',
         }}>
           {children}
         </div>

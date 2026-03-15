@@ -92,12 +92,17 @@ export function Badge({ status }) {
   )
 }
 
-/* ── CARD ───────────────────────────────────────────────── */
+/* ── Card ───────────────────────────────────────────────── */
 export function Card({ children, style, className }) {
   return (
     <div className={className} style={{
       background: 'var(--surface)', borderRadius: 'var(--radius)',
-      boxShadow: 'var(--shadow)', overflow: 'hidden', ...style
+      boxShadow: 'var(--shadow)',
+      // overflow hidden was clipping content on mobile — use visible instead
+      overflow: 'visible',
+      // Ensure card never exceeds its container
+      maxWidth: '100%',
+      ...style
     }}>
       {children}
     </div>
