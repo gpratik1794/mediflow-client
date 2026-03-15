@@ -254,15 +254,21 @@ export default function ClinicPatients() {
   const ALL_DOCTORS = (profile?.doctors || []).map(d => d.name).filter(Boolean)
 
   // ── Audience filter state (multi-tag + doctor + AND/OR) ───────────────────
-  const [filterTags, setFilterTags]   = useState([])   // array of selected tag names
-  const [filterLogic, setFilterLogic] = useState('OR') // 'OR' | 'AND'
-  const [filterDoctor, setFilterDoctor] = useState('') // '' = any doctor
+  const [filterTags, setFilterTags]     = useState([])
+  const [filterLogic, setFilterLogic]   = useState('OR')
+  const [filterDoctor, setFilterDoctor] = useState('')
+
+  // ── Pagination ─────────────────────────────────────────────────────────────
+  const [pageSize, setPageSize]   = useState(25)
+  const [currentPage, setCurrentPage] = useState(1)
+  // 'page' = only current page selected, 'all' = all filtered patients selected
+  const [selectScope, setSelectScope] = useState('page')
 
   // ── Selection + send state ─────────────────────────────────────────────────
-  const [selected, setSelected]           = useState(new Set())
-  const [showWAModal, setShowWAModal]     = useState(false)
-  const [waSending, setWaSending]         = useState(false)
-  const [waError, setWaError]             = useState(null)
+  const [selected, setSelected]             = useState(new Set())
+  const [showWAModal, setShowWAModal]       = useState(false)
+  const [waSending, setWaSending]           = useState(false)
+  const [waError, setWaError]               = useState(null)
   const [lastSendResult, setLastSendResult] = useState(null)
 
   // ── History state ──────────────────────────────────────────────────────────
@@ -279,7 +285,7 @@ export default function ClinicPatients() {
   const allCampaigns = localCampaigns ?? (profile?.whatsappCampaigns || [])
 
   useEffect(() => { loadPatients() }, [user])
-  useEffect(() => { if (activeTab === 'campaigns') loadHistory() }, [activeTab])
+  useEffect(() => { if (activeTab === 'history') loadHistory() }, [activeTab])
 
   async function loadPatients() {
     setLoading(true)
@@ -362,11 +368,22 @@ export default function ClinicPatients() {
     setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
   function toggleAll() {
-    setSelected(selected.size === audienceFiltered.length ? new Set() : new Set(audienceFiltered.map(p => p.id)))
+    if (selectScope === 'all' && selected.size === audienceFiltered.length) {
+      setSelected(new Set()); setSelectScope('page'); return
+    }
+    if (selected.size === currentPagePatients.length && selectScope === 'page') {
+      setSelected(new Set()); return
+    }
+    setSelected(new Set(currentPagePatients.map(p => p.id)))
+    setSelectScope('page')
+  }
+  function selectAllAcrossPages() {
+    setSelected(new Set(audienceFiltered.map(p => p.id)))
+    setSelectScope('all')
   }
   function toggleFilterTag(tag) {
     setFilterTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
-    setSelected(new Set())
+    setSelected(new Set()); setCurrentPage(1)
   }
 
   // ── Modal helpers ──────────────────────────────────────────────────────────
@@ -478,6 +495,14 @@ export default function ClinicPatients() {
     return parts.length > 0 ? parts.join(' · ') : 'All patients'
   }
 
+  // ── Pagination computed values ─────────────────────────────────────────────
+  const totalPages        = Math.max(1, Math.ceil(audienceFiltered.length / pageSize))
+  const safePage          = Math.min(currentPage, totalPages)
+  const currentPageStart  = (safePage - 1) * pageSize
+  const currentPagePatients = audienceFiltered.slice(currentPageStart, currentPageStart + pageSize)
+  const allPageSelected   = currentPagePatients.length > 0 && currentPagePatients.every(p => selected.has(p.id))
+  const someSelected      = selected.size > 0
+
   // ═══════════════════════════════════════════════════════════════════════════
   return (
     <Layout title="Marketing"
@@ -496,7 +521,7 @@ export default function ClinicPatients() {
 
       {/* ── Top Tabs ── */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
-        {[['campaigns','📣 Campaigns'], ['patients','👥 Patients']].map(([tab, label]) => (
+        {[['campaigns','📣 Campaigns'], ['history','📋 History'], ['patients','👥 Patients']].map(([tab, label]) => (
           <button key={tab} onClick={() => { setActiveTab(tab); setLastSendResult(null); setWaError(null) }} style={{
             padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: activeTab === tab ? 700 : 400,
@@ -563,220 +588,318 @@ export default function ClinicPatients() {
                   {lastSendResult.failed.map((r, i) => <div key={i} style={{ paddingLeft: 10, marginTop: 2 }}>• {r.name} — {r.error}</div>)}
                 </div>
               )}
-              {lastSendResult.sent > 0 && <div style={{ fontSize: 11, color: '#065F46' }}>📋 Saved to History below · Delivered/Read requires webhook setup</div>}
+              {lastSendResult.sent > 0 && (
+                <div style={{ fontSize: 11, color: '#065F46' }}>
+                  📋 Saved to <strong style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setActiveTab('history')}>History tab</strong> · Delivered/Read requires webhook setup
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── Audience Filter Card ── */}
-          <Card>
-            <CardHeader title="🎯 Audience Filter" />
-            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* ── Beautified Audience Filter ── */}
+          <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, padding: '18px 20px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>🎯 Audience Filter</div>
+              {(filterTags.length > 0 || filterDoctor) && (
+                <button type="button" onClick={() => { setFilterTags([]); setFilterDoctor(''); setSelected(new Set()); setCurrentPage(1) }}
+                  style={{ fontSize: 11, color: 'var(--muted)', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                  ✕ Clear all filters
+                </button>
+              )}
+            </div>
 
-              {/* Tag filter row */}
+            {/* Tag filter */}
+            <div style={{ marginBottom: ALL_DOCTORS.length > 0 ? 14 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.6 }}>By Tag</span>
+                {filterTags.length > 1 && (
+                  <div style={{ display: 'flex', background: 'var(--bg)', border: '1.5px solid var(--border)', borderRadius: 20, overflow: 'hidden', padding: 2, gap: 2 }}>
+                    {['OR','AND'].map(logic => (
+                      <button key={logic} type="button" onClick={() => setFilterLogic(logic)} style={{
+                        padding: '2px 10px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                        fontSize: 10, fontWeight: 700, fontFamily: 'DM Sans, sans-serif',
+                        background: filterLogic === logic ? 'var(--teal)' : 'transparent',
+                        color: filterLogic === logic ? '#fff' : 'var(--muted)',
+                        transition: 'all 0.15s',
+                      }}>{logic}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                {ALL_TAGS.map(tag => {
+                  const count = patients.filter(p => (p.tags || []).includes(tag)).length
+                  if (count === 0) return null
+                  const on    = filterTags.includes(tag)
+                  const color = TAG_COLORS[tag] || 'var(--teal)'
+                  return (
+                    <button key={tag} type="button" onClick={() => toggleFilterTag(tag)} style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      border: `1.5px solid ${on ? color : 'var(--border)'}`,
+                      background: on ? color + '18' : 'var(--bg)',
+                      color: on ? color : 'var(--slate)', fontFamily: 'DM Sans, sans-serif',
+                      boxShadow: on ? `0 0 0 1px ${color}40` : 'none',
+                      transition: 'all 0.15s',
+                    }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0, opacity: on ? 1 : 0.4 }} />
+                      {TAG_LABELS[tag] || tag}
+                      <span style={{ fontSize: 10, fontWeight: 500, background: on ? color + '30' : 'var(--border)', color: on ? color : 'var(--muted)', padding: '0 5px', borderRadius: 10 }}>{count}</span>
+                      {on && <span style={{ fontSize: 10, marginLeft: -2 }}>✓</span>}
+                    </button>
+                  )
+                })}
+                {ALL_TAGS.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>No tags yet. Add in Settings → Clinic → Patient Tags.</div>}
+              </div>
+            </div>
+
+            {/* Doctor filter */}
+            {ALL_DOCTORS.length > 0 && (
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Filter by Tag</span>
-                  {filterTags.length > 1 && (
-                    <div style={{ display: 'flex', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                      {['OR','AND'].map(logic => (
-                        <button key={logic} type="button" onClick={() => setFilterLogic(logic)} style={{
-                          padding: '3px 12px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                          background: filterLogic === logic ? 'var(--teal)' : '#fff',
-                          color: filterLogic === logic ? '#fff' : 'var(--muted)',
-                          fontFamily: 'DM Sans, sans-serif',
-                        }}>{logic}</button>
-                      ))}
-                    </div>
-                  )}
-                  {filterTags.length > 0 && (
-                    <button type="button" onClick={() => { setFilterTags([]); setSelected(new Set()) }} style={{ fontSize: 11, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'DM Sans, sans-serif' }}>Clear tags</button>
-                  )}
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {ALL_TAGS.map(tag => {
-                    const count    = patients.filter(p => (p.tags || []).includes(tag)).length
-                    if (count === 0) return null
-                    const on    = filterTags.includes(tag)
-                    const color = TAG_COLORS[tag] || 'var(--teal)'
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>By Doctor</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  <button type="button" onClick={() => { setFilterDoctor(''); setSelected(new Set()) }} style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    border: `1.5px solid ${!filterDoctor ? 'var(--teal)' : 'var(--border)'}`,
+                    background: !filterDoctor ? 'var(--teal-light)' : 'var(--bg)',
+                    color: !filterDoctor ? 'var(--teal)' : 'var(--slate)', fontFamily: 'DM Sans, sans-serif',
+                    transition: 'all 0.15s',
+                  }}>
+                    <span style={{ fontSize: 12 }}>🏥</span> Any Doctor
+                  </button>
+                  {ALL_DOCTORS.map(docName => {
+                    const on      = filterDoctor === docName
+                    const initials = docName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
                     return (
-                      <button key={tag} type="button" onClick={() => toggleFilterTag(tag)} style={{
-                        padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        border: `1.5px solid ${on ? color : 'var(--border)'}`,
-                        background: on ? color + '20' : 'none',
-                        color: on ? color : 'var(--slate)', fontFamily: 'DM Sans, sans-serif',
-                        position: 'relative',
+                      <button key={docName} type="button" onClick={() => { setFilterDoctor(on ? '' : docName); setSelected(new Set()) }} style={{
+                        display: 'flex', alignItems: 'center', gap: 7,
+                        padding: '5px 12px 5px 6px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        border: `1.5px solid ${on ? 'var(--teal)' : 'var(--border)'}`,
+                        background: on ? 'var(--teal-light)' : 'var(--bg)',
+                        color: on ? 'var(--teal)' : 'var(--slate)', fontFamily: 'DM Sans, sans-serif',
+                        transition: 'all 0.15s',
                       }}>
-                        {on && <span style={{ marginRight: 4 }}>✓</span>}
-                        {TAG_LABELS[tag] || tag} ({count})
+                        <span style={{ width: 22, height: 22, borderRadius: '50%', background: on ? 'var(--teal)' : 'var(--border)', color: on ? '#fff' : 'var(--slate)', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initials}</span>
+                        {docName}
                       </button>
                     )
                   })}
-                  {ALL_TAGS.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>No tags configured. Add in Settings → Clinic → Patient Tags.</div>}
                 </div>
               </div>
+            )}
 
-              {/* Doctor filter row */}
-              {ALL_DOCTORS.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Filter by Doctor</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    <button type="button" onClick={() => { setFilterDoctor(''); setSelected(new Set()) }} style={{
-                      padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      border: `1.5px solid ${!filterDoctor ? 'var(--teal)' : 'var(--border)'}`,
-                      background: !filterDoctor ? 'var(--teal-light)' : 'none',
-                      color: !filterDoctor ? 'var(--teal)' : 'var(--slate)', fontFamily: 'DM Sans, sans-serif'
-                    }}>Any Doctor</button>
-                    {ALL_DOCTORS.map(doc => {
-                      const on = filterDoctor === doc
-                      return (
-                        <button key={doc} type="button" onClick={() => { setFilterDoctor(on ? '' : doc); setSelected(new Set()) }} style={{
-                          padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                          border: `1.5px solid ${on ? 'var(--teal)' : 'var(--border)'}`,
-                          background: on ? 'var(--teal-light)' : 'none',
-                          color: on ? 'var(--teal)' : 'var(--slate)', fontFamily: 'DM Sans, sans-serif'
-                        }}>👨‍⚕️ {doc}</button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
+            {/* Active filter summary */}
+            {(filterTags.length > 0 || filterDoctor) && (
+              <div style={{ marginTop: 12, background: 'var(--teal-light)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--teal)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                🎯 {audienceSummary()} — <strong>{audienceFiltered.length} patient{audienceFiltered.length !== 1 ? 's' : ''}</strong> match
+              </div>
+            )}
+          </div>
 
-              {/* Active filter summary */}
-              {(filterTags.length > 0 || filterDoctor) && (
-                <div style={{ background: 'var(--teal-light)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--teal)', fontWeight: 600 }}>
-                  🎯 {audienceSummary()} — <strong>{audienceFiltered.length} patient{audienceFiltered.length !== 1 ? 's' : ''}</strong> match
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* ── Patient list with checkboxes ── */}
+          {/* ── Patient list with checkboxes + pagination ── */}
           <Card>
-            <CardHeader
-              title={`${filterTags.length > 0 || filterDoctor ? 'Filtered' : 'All'} Patients (${audienceFiltered.length})`}
-              action={
-                selected.size > 0 && (
+            {/* Table header bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>
+                {filterTags.length > 0 || filterDoctor ? 'Filtered' : 'All'} Patients ({audienceFiltered.length})
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {/* Per-page selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--slate)' }}>
+                  <span>Show</span>
+                  <div style={{ display: 'flex', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                    {[25, 50, 100, 200].map(n => (
+                      <button key={n} type="button" onClick={() => { setPageSize(n); setCurrentPage(1); setSelected(new Set()) }}
+                        style={{ padding: '4px 9px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: pageSize === n ? 700 : 400, background: pageSize === n ? 'var(--teal)' : '#fff', color: pageSize === n ? '#fff' : 'var(--slate)', fontFamily: 'DM Sans, sans-serif' }}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  <span>per page</span>
+                </div>
+                {selected.size > 0 && (
                   <Btn small onClick={openWAModal} disabled={allCampaigns.length === 0}>
                     📱 Send WhatsApp ({selected.size})
                   </Btn>
-                )
-              }
-            />
+                )}
+              </div>
+            </div>
+
+            {/* Select-all-across-pages banner */}
+            {allPageSelected && audienceFiltered.length > pageSize && selectScope === 'page' && (
+              <div style={{ background: '#EFF6FF', borderBottom: '1px solid #BFDBFE', padding: '8px 18px', fontSize: 12, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 8 }}>
+                All {currentPagePatients.length} patients on this page are selected.
+                <button type="button" onClick={selectAllAcrossPages}
+                  style={{ fontWeight: 700, color: '#1D4ED8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'DM Sans, sans-serif', fontSize: 12 }}>
+                  Select all {audienceFiltered.length} patients across all pages
+                </button>
+              </div>
+            )}
+            {selectScope === 'all' && selected.size === audienceFiltered.length && (
+              <div style={{ background: '#EFF6FF', borderBottom: '1px solid #BFDBFE', padding: '8px 18px', fontSize: 12, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 8 }}>
+                All {audienceFiltered.length} patients are selected.
+                <button type="button" onClick={() => { setSelected(new Set()); setSelectScope('page') }}
+                  style={{ fontWeight: 700, color: '#1D4ED8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'DM Sans, sans-serif', fontSize: 12 }}>
+                  Clear selection
+                </button>
+              </div>
+            )}
+
             {audienceFiltered.length === 0 ? (
               <Empty icon="🏷" message="No patients match the current filter." />
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg)' }}>
-                    <th style={{ padding: '10px 18px', width: 40 }}>
-                      <input type="checkbox" checked={selected.size === audienceFiltered.length && audienceFiltered.length > 0} onChange={toggleAll} style={{ cursor: 'pointer', width: 15, height: 15 }} />
-                    </th>
-                    {['Name','Phone','Age / Gender','Tags'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '10px 18px', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--muted)', fontWeight: 500, borderBottom: '1px solid var(--border)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {audienceFiltered.map(p => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', background: selected.has(p.id) ? 'var(--teal-light)' : 'transparent', transition: 'background 0.1s' }}>
-                      <td style={{ padding: '12px 18px' }}>
-                        <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} style={{ cursor: 'pointer', width: 15, height: 15 }} />
-                      </td>
-                      <td style={{ padding: '12px 18px' }}>
-                        <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--navy)', cursor: 'pointer' }} onClick={() => navigate(`/patients/${p.id}`)}>{p.name}</div>
-                      </td>
-                      <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{maskPhone(p.phone)}</td>
-                      <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{p.age ? `${p.age}y` : '—'} {p.gender ? `· ${p.gender}` : ''}</td>
-                      <td style={{ padding: '12px 18px' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {(p.tags || []).map(tag => <TagPill key={tag} tag={tag} />)}
-                        </div>
-                      </td>
+              <>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg)' }}>
+                      <th style={{ padding: '10px 18px', width: 40 }}>
+                        <input type="checkbox"
+                          checked={allPageSelected}
+                          onChange={toggleAll}
+                          style={{ cursor: 'pointer', width: 15, height: 15 }} />
+                      </th>
+                      {['Name','Phone','Age / Gender','Tags'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '10px 18px', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--muted)', fontWeight: 500, borderBottom: '1px solid var(--border)' }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {currentPagePatients.map(p => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', background: selected.has(p.id) ? 'var(--teal-light)' : 'transparent', transition: 'background 0.1s' }}>
+                        <td style={{ padding: '12px 18px' }}>
+                          <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} style={{ cursor: 'pointer', width: 15, height: 15 }} />
+                        </td>
+                        <td style={{ padding: '12px 18px' }}>
+                          <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--navy)', cursor: 'pointer' }} onClick={() => navigate(`/patients/${p.id}`)}>{p.name}</div>
+                        </td>
+                        <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{maskPhone(p.phone)}</td>
+                        <td style={{ padding: '12px 18px', fontSize: 13, color: 'var(--slate)' }}>{p.age ? `${p.age}y` : '—'} {p.gender ? `· ${p.gender}` : ''}</td>
+                        <td style={{ padding: '12px 18px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {(p.tags || []).map(tag => <TagPill key={tag} tag={tag} />)}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Pagination controls */}
+                {totalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                      Showing {currentPageStart + 1}–{Math.min(currentPageStart + pageSize, audienceFiltered.length)} of {audienceFiltered.length}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <button type="button" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safePage === 1}
+                        style={{ padding: '5px 10px', borderRadius: 7, border: '1.5px solid var(--border)', background: 'none', cursor: safePage === 1 ? 'not-allowed' : 'pointer', fontSize: 12, color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif', opacity: safePage === 1 ? 0.4 : 1 }}>
+                        ← Prev
+                      </button>
+                      {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                        let page
+                        if (totalPages <= 7) page = i + 1
+                        else if (safePage <= 4) page = i + 1
+                        else if (safePage >= totalPages - 3) page = totalPages - 6 + i
+                        else page = safePage - 3 + i
+                        return (
+                          <button key={page} type="button" onClick={() => setCurrentPage(page)}
+                            style={{ width: 30, height: 30, borderRadius: 7, border: `1.5px solid ${safePage === page ? 'var(--teal)' : 'var(--border)'}`, background: safePage === page ? 'var(--teal)' : 'none', color: safePage === page ? '#fff' : 'var(--slate)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: safePage === page ? 700 : 400 }}>
+                            {page}
+                          </button>
+                        )
+                      })}
+                      <button type="button" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}
+                        style={{ padding: '5px 10px', borderRadius: 7, border: '1.5px solid var(--border)', background: 'none', cursor: safePage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12, color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif', opacity: safePage === totalPages ? 0.4 : 1 }}>
+                        Next →
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </Card>
+        </>
+      )}
 
-          {/* ── Campaign History ── */}
-          <div style={{ marginTop: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)' }}>📋 Campaign History</div>
-              <Btn variant="ghost" small onClick={loadHistory} disabled={historyLoading}>{historyLoading ? 'Refreshing…' : '↻ Refresh'}</Btn>
-            </div>
+      {/* ═══════════ HISTORY TAB ═══════════ */}
+      {activeTab === 'history' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>{history.length} campaign{history.length !== 1 ? 's' : ''} sent</div>
+            <Btn variant="ghost" small onClick={loadHistory} disabled={historyLoading}>{historyLoading ? 'Refreshing…' : '↻ Refresh'}</Btn>
+          </div>
 
-            {historyLoading ? <Empty icon="⏳" message="Loading…" />
-              : history.length === 0 ? <Empty icon="📋" message="No campaigns sent yet. Select patients above and click Send Campaign." />
-              : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {history.map(record => {
-                    const isExpanded  = expandedHistory.has(record.id)
-                    const sentCount   = record.sentCount   ?? (record.recipients || []).filter(r => r.status === 'sent').length
-                    const failedCount = record.failedCount ?? (record.recipients || []).filter(r => r.status === 'failed').length
-                    return (
-                      <Card key={record.id}>
-                        <div style={{ padding: '16px 20px' }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>{record.name || record.templateName || 'Campaign'}</div>
-                              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>{formatSentAt(record.sentAt)} · by {record.sentBy || '—'}</div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: '#D1FAE5', color: '#065F46', fontWeight: 600 }}>✓ {sentCount} sent</span>
-                                {failedCount > 0 && <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: '#FEE2E2', color: '#991B1B', fontWeight: 600 }}>✗ {failedCount} failed</span>}
-                                <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'var(--bg)', color: 'var(--slate)', fontWeight: 600 }}>👥 {record.audienceSize}</span>
-                                {(record.tagFilters || []).length > 0 && (
-                                  <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'var(--teal-light)', color: 'var(--teal)', fontWeight: 600 }}>
-                                    🏷 {record.tagFilters.map(t => TAG_LABELS[t] || t).join(', ')}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Template: <code style={{ background: 'var(--bg)', padding: '1px 6px', borderRadius: 4 }}>{record.templateName}</code></div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>Delivered/Read — webhook needed</div>
+          {historyLoading ? <Empty icon="⏳" message="Loading campaign history…" />
+            : history.length === 0 ? <Empty icon="📋" message="No campaigns sent yet. Go to Campaigns tab to send your first one." />
+            : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {history.map(record => {
+                  const isExpanded  = expandedHistory.has(record.id)
+                  const sentCount   = record.sentCount   ?? (record.recipients || []).filter(r => r.status === 'sent').length
+                  const failedCount = record.failedCount ?? (record.recipients || []).filter(r => r.status === 'failed').length
+                  return (
+                    <Card key={record.id}>
+                      <div style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>{record.name || record.templateName || 'Campaign'}</div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>{formatSentAt(record.sentAt)} · by {record.sentBy || '—'}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: '#D1FAE5', color: '#065F46', fontWeight: 600 }}>✓ {sentCount} sent</span>
+                              {failedCount > 0 && <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: '#FEE2E2', color: '#991B1B', fontWeight: 600 }}>✗ {failedCount} failed</span>}
+                              <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'var(--bg)', color: 'var(--slate)', fontWeight: 600 }}>👥 {record.audienceSize}</span>
+                              {(record.tagFilters || []).length > 0 && (
+                                <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, background: 'var(--teal-light)', color: 'var(--teal)', fontWeight: 600 }}>
+                                  🏷 {record.tagFilters.map(t => TAG_LABELS[t] || t).join(', ')}
+                                </span>
+                              )}
                             </div>
                           </div>
-                          {(record.recipients?.length > 0) && (
-                            <button type="button" onClick={() => setExpandedHistory(s => { const n = new Set(s); n.has(record.id) ? n.delete(record.id) : n.add(record.id); return n })}
-                              style={{ marginTop: 12, background: 'none', border: '1.5px solid var(--border)', borderRadius: 8, padding: '6px 14px', fontSize: 12, cursor: 'pointer', color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif', fontWeight: 500 }}>
-                              {isExpanded ? '▲ Hide recipients' : `▼ ${record.recipients.length} recipients`}
-                            </button>
-                          )}
-                          {isExpanded && (
-                            <div style={{ marginTop: 12, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                                <thead>
-                                  <tr style={{ background: 'var(--bg)' }}>
-                                    {['Name','Phone','Status','Note'].map(h => (
-                                      <th key={h} style={{ textAlign: 'left', padding: '8px 14px', fontWeight: 600, color: 'var(--muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)' }}>{h}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {record.recipients.map((r, i) => (
-                                    <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: r.status === 'failed' ? '#FFF5F5' : 'transparent' }}>
-                                      <td style={{ padding: '8px 14px', color: 'var(--navy)', fontWeight: 500 }}>{r.name}</td>
-                                      <td style={{ padding: '8px 14px', color: 'var(--slate)' }}>{maskPhone(r.phone)}</td>
-                                      <td style={{ padding: '8px 14px' }}>
-                                        <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: r.status === 'sent' ? '#D1FAE5' : '#FEE2E2', color: r.status === 'sent' ? '#065F46' : '#991B1B' }}>
-                                          {r.status === 'sent' ? '✓ Sent' : '✗ Failed'}
-                                        </span>
-                                      </td>
-                                      <td style={{ padding: '8px 14px', color: 'var(--muted)', fontStyle: r.error ? 'normal' : 'italic', fontSize: 11 }}>{r.error || (r.status === 'sent' ? 'Delivered/Read unknown' : '—')}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Template: <code style={{ background: 'var(--bg)', padding: '1px 6px', borderRadius: 4 }}>{record.templateName}</code></div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>Delivered/Read — webhook needed</div>
+                          </div>
                         </div>
-                      </Card>
-                    )
-                  })}
-                </div>
-              )}
-          </div>
+                        {(record.recipients?.length > 0) && (
+                          <button type="button" onClick={() => setExpandedHistory(s => { const n = new Set(s); n.has(record.id) ? n.delete(record.id) : n.add(record.id); return n })}
+                            style={{ marginTop: 12, background: 'none', border: '1.5px solid var(--border)', borderRadius: 8, padding: '6px 14px', fontSize: 12, cursor: 'pointer', color: 'var(--slate)', fontFamily: 'DM Sans, sans-serif', fontWeight: 500 }}>
+                            {isExpanded ? '▲ Hide recipients' : `▼ ${record.recipients.length} recipients`}
+                          </button>
+                        )}
+                        {isExpanded && (
+                          <div style={{ marginTop: 12, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                              <thead>
+                                <tr style={{ background: 'var(--bg)' }}>
+                                  {['Name','Phone','Status','Note'].map(h => (
+                                    <th key={h} style={{ textAlign: 'left', padding: '8px 14px', fontWeight: 600, color: 'var(--muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid var(--border)' }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {record.recipients.map((r, i) => (
+                                  <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: r.status === 'failed' ? '#FFF5F5' : 'transparent' }}>
+                                    <td style={{ padding: '8px 14px', color: 'var(--navy)', fontWeight: 500 }}>{r.name}</td>
+                                    <td style={{ padding: '8px 14px', color: 'var(--slate)' }}>{maskPhone(r.phone)}</td>
+                                    <td style={{ padding: '8px 14px' }}>
+                                      <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: r.status === 'sent' ? '#D1FAE5' : '#FEE2E2', color: r.status === 'sent' ? '#065F46' : '#991B1B' }}>
+                                        {r.status === 'sent' ? '✓ Sent' : '✗ Failed'}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '8px 14px', color: 'var(--muted)', fontStyle: r.error ? 'normal' : 'italic', fontSize: 11 }}>{r.error || (r.status === 'sent' ? 'Delivered/Read unknown' : '—')}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
         </>
       )}
 
