@@ -50,12 +50,10 @@ export default function AppointmentDetail() {
   const centreId    = profile?._centreId || user?.uid
   const canSeePhone = !role || userRecord?.permissions?.showPhone === true
 
-  // ── Role flags ──
   const isReceptionist = role === 'receptionist'
-  const canCallIn      = !isReceptionist   // doctor or owner can advance status past waiting
+  const canCallIn      = !isReceptionist
   const canPrescribe   = !isReceptionist
-  const canEditFee     = true              // both receptionist and owner/doctor can update fee
-  // Receptionist CANNOT see past prescription list or write prescriptions
+  const canEditFee     = true
   const canSeePrescriptions = !isReceptionist
 
   const navigate = useNavigate()
@@ -70,6 +68,13 @@ export default function AppointmentDetail() {
   const [paymentStatus, setPaymentStatus] = useState('pending')
   const [savingFee, setSavingFee]     = useState(false)
   const [prescBlockModal, setPrescBlockModal] = useState(false)
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => { if (user && id && centreId) loadData() }, [id, user, centreId])
 
@@ -167,17 +172,17 @@ export default function AppointmentDetail() {
     <Layout
       title={`#${appt.tokenNumber} — ${appt.patientName}`}
       action={
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           <Btn variant="ghost" small onClick={() => navigate(-1)}>← Back</Btn>
           {canPrescribe && appt.status === 'in-consultation' && (
-            <Btn onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}>
-              ✍ Write Prescription
+            <Btn small onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}>
+              {isMobile ? '✍ Rx' : '✍ Write Prescription'}
             </Btn>
           )}
         </div>
       }
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 320px', gap: 20 }}>
 
         {/* ── LEFT ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -205,8 +210,8 @@ export default function AppointmentDetail() {
                     <React.Fragment key={s}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                         <div style={{
-                          width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 13, fontWeight: 600,
+                          width: isMobile ? 44 : 36, height: isMobile ? 44 : 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: isMobile ? 15 : 13, fontWeight: 600,
                           cursor: i === currentIdx + 1 && !(s === 'done' && showPrescWarning) ? 'pointer' : 'default',
                           background: i <= currentIdx ? 'var(--teal)' : (s === 'done' && showPrescWarning ? '#E5E7EB' : 'var(--border)'),
                           color: i <= currentIdx ? '#fff' : 'var(--muted)', transition: 'all 0.2s'
@@ -259,7 +264,7 @@ export default function AppointmentDetail() {
           <Card>
             <CardHeader title="Vitals" sub={isReceptionist ? 'Take before doctor sees patient' : 'Record before consultation'} />
             <div style={{ padding: '20px 24px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 14, marginBottom: 16 }}>
                 {VITALS_FIELDS.map(f => (
                   <div key={f.key}>
                     <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, display: 'block', marginBottom: 5 }}>
@@ -440,8 +445,8 @@ export default function AppointmentDetail() {
 
       {/* Prescription block modal */}
       {prescBlockModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: 'white', borderRadius: 16, padding: 32, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
+          <div style={{ background: 'white', borderRadius: isMobile ? '20px 20px 0 0' : 16, padding: isMobile ? '28px 20px 36px' : 32, maxWidth: isMobile ? '100%' : 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>✍</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>Write Prescription First</div>
             <div style={{ fontSize: 13, color: 'var(--slate)', lineHeight: 1.7, marginBottom: 24 }}>
