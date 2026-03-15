@@ -93,7 +93,11 @@ export default function NewAppointment() {
     setSearching(true)
     try {
       const results = await searchPatients(centreId, phone)
-      if (results.length === 1) { fillPatient(results[0]) }
+      if (results.length === 1) {
+        fillPatient(results[0])
+        // Auto-fetch fee based on visit history
+        autoFetchFee(results[0])
+      }
       else setSearchResults(results)
 
       // ── Check for duplicate appointment today ──
@@ -108,6 +112,36 @@ export default function NewAppointment() {
       }
     } catch (e) { console.error(e) }
     setSearching(false)
+  }
+
+  function autoFetchFee(patient) {
+    // Find doctor config — use selected doctor or first doctor
+    const docName = form.doctorName
+    const docObj  = (profile?.doctors || []).find(d => d.name === docName) || profile?.doctors?.[0] || {}
+    const firstFee   = docObj.firstVisitFee  || ''
+    const repeatFee  = docObj.repeatVisitFee || ''
+    const resetMonths = Number(docObj.feeResetMonths) || 0
+
+    if (!firstFee && !repeatFee) return // no fees configured
+
+    let suggestedFee = firstFee
+    let feeHint = 'first'
+
+    const lastVisit = patient?.lastClinicVisit
+    if (lastVisit) {
+      const monthsDiff = (new Date() - new Date(lastVisit)) / (1000 * 60 * 60 * 24 * 30.44)
+      if (resetMonths > 0 && monthsDiff > resetMonths) {
+        suggestedFee = firstFee
+        feeHint = 'reset'
+      } else if (repeatFee) {
+        suggestedFee = repeatFee
+        feeHint = 'repeat'
+      }
+    }
+
+    if (suggestedFee) {
+      setForm(f => ({ ...f, consultationFee: String(suggestedFee), _feeHint: feeHint }))
+    }
   }
 
   function handlePhoneChange(e) {
@@ -519,6 +553,14 @@ export default function NewAppointment() {
                   <div>
                     <label style={lStyle}>Fee (₹)</label>
                     <input type="text" inputMode="numeric" value={form.consultationFee} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ''); setForm(f => ({ ...f, consultationFee: v })) }} placeholder="e.g. 300" style={iStyle} />
+                    {form._feeHint && form.consultationFee && (
+                      <div style={{ fontSize: 11, marginTop: 4, color: form._feeHint === 'repeat' ? '#166534' : '#1D4ED8' }}>
+                        {form._feeHint === 'repeat' && '🔄 Repeat visit fee auto-applied'}
+                        {form._feeHint === 'first'  && '✨ First visit fee auto-applied'}
+                        {form._feeHint === 'reset'  && '🔁 First visit fee re-applied (gap exceeded)'}
+                        {' '}· <button type="button" onClick={() => setForm(f => ({ ...f, consultationFee: '', _feeHint: null }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 11, textDecoration: 'underline', fontFamily: 'DM Sans, sans-serif' }}>clear</button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={lStyle}>Payment</label>

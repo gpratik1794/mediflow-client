@@ -1106,7 +1106,7 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor, cent
             {/* Fees */}
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>💰 Consultation Fees</div>
-              <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
                   <span style={lStyle}>First Visit Fee (₹)</span>
                   <input style={sStyle} type="number" min="0"
@@ -1122,8 +1122,26 @@ function DoctorsManager({ doctors, onChange, onSaveDoctors, onRemoveDoctor, cent
                     placeholder="e.g. 300" />
                 </div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
-                Shown as defaults when booking. Receptionist can override at time of booking or mark as Free.
+              <div style={{ marginBottom: 8 }}>
+                <span style={lStyle}>Reset to First Visit Fee after (months)</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {[1, 2, 3, 6, 12].map(n => {
+                    const sel = Number(d.feeResetMonths) === n
+                    return (
+                      <button key={n} type="button"
+                        onClick={() => { const updated = [...doctors]; updated[i] = { ...d, feeResetMonths: sel ? '' : n }; onChange(updated) }}
+                        style={{ padding: '5px 12px', borderRadius: 20, border: `1.5px solid ${sel ? 'var(--teal)' : 'var(--border)'}`, background: sel ? 'var(--teal-light)' : 'none', color: sel ? 'var(--teal)' : 'var(--slate)', fontSize: 12, fontWeight: sel ? 700 : 400, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                        {n === 1 ? '1 mo' : n === 12 ? '1 yr' : `${n} mo`}
+                      </button>
+                    )
+                  })}
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    {d.feeResetMonths ? `If last visit was more than ${d.feeResetMonths} month${d.feeResetMonths > 1 ? 's' : ''} ago, first visit fee applies again` : 'Not set — repeat fee always applies for returning patients'}
+                  </span>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+                Fee is auto-fetched when booking based on patient's visit history. Receptionist or doctor can override at time of booking.
               </div>
             </div>
             {/* Schedule notification time */}
@@ -1546,6 +1564,7 @@ export default function Settings() {
     fallbackNotifyNumber: '',
     tokenSystem: 'fixed',
     customPatientTags: [],
+    feeConfirmationRequired: true,
   })
 
   useEffect(() => {
@@ -1567,6 +1586,7 @@ export default function Settings() {
         fallbackNotifyNumber: profile.fallbackNotifyNumber || '',
         tokenSystem: profile.tokenSystem || 'fixed',
         customPatientTags: profile.customPatientTags || [],
+        feeConfirmationRequired: profile.feeConfirmationRequired !== false,
       }))
     }
   }, [profile])
@@ -1597,6 +1617,7 @@ export default function Settings() {
   function handleSaveDoctors()             { saveFields({ doctors: form.doctors }) }
   function handleSaveAppointmentSettings() { saveFields({ tokenSystem: form.tokenSystem }) }
   function handleSavePatientTags()         { saveFields({ customPatientTags: form.customPatientTags }) }
+  function handleSaveFeeSettings()         { saveFields({ feeConfirmationRequired: form.feeConfirmationRequired }) }
 
   // ── Staff functions ──────────────────────────────────────────────────────
   async function loadStaffList() {
@@ -1927,6 +1948,46 @@ export default function Settings() {
                 </div>
                 <Btn type="button" onClick={handleSaveAppointmentSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center', marginTop: 14 }}>
                   {saving ? 'Saving…' : '💾 Save Token Settings'}
+                </Btn>
+              </div>
+            </Section>
+
+            {/* ── Fee Confirmation ── */}
+            <Section title="💰 Fee Collection Settings">
+              <div style={{ background: '#F0F9FF', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: '#0369A1', lineHeight: 1.8 }}>
+                💡 Per-doctor fees (First Visit / Repeat Visit / Reset period) are set in the <strong>Doctors tab</strong>. Fee is auto-fetched based on the patient's visit history when booking.
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 4 }}>Fee Confirmation Requirement</div>
+                <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 12, lineHeight: 1.7 }}>
+                  When enabled, the fee amount must be confirmed before an appointment can be marked as paid. When disabled, clicking "Paid" immediately marks it paid with the pre-set amount — no confirmation needed.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    { value: true,  label: 'Require confirmation', emoji: '✋', desc: 'Doctor / receptionist sees a fee modal with the amount — must confirm before marking paid. Recommended.' },
+                    { value: false, label: 'Auto-mark paid',        emoji: '⚡', desc: 'Clicking Paid immediately saves without showing a modal. Use only if fees are always pre-filled correctly.' },
+                  ].map(opt => {
+                    const selected = form.feeConfirmationRequired === opt.value
+                    return (
+                      <div key={String(opt.value)} onClick={() => setForm(f => ({ ...f, feeConfirmationRequired: opt.value }))}
+                        style={{ border: `2px solid ${selected ? 'var(--teal)' : 'var(--border)'}`, borderRadius: 12, padding: '12px 14px', cursor: 'pointer', background: selected ? 'var(--teal-light)' : 'var(--surface)', display: 'flex', gap: 12, alignItems: 'flex-start', transition: 'all 0.15s' }}>
+                        <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{opt.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: selected ? 'var(--teal)' : 'var(--navy)' }}>{opt.label}</span>
+                            {selected && <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--teal)', color: '#fff', padding: '2px 8px', borderRadius: 20 }}>ACTIVE</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--slate)', lineHeight: 1.6 }}>{opt.desc}</div>
+                        </div>
+                        <div style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 3, border: `2px solid ${selected ? 'var(--teal)' : 'var(--border)'}`, background: selected ? 'var(--teal)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {selected && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <Btn type="button" onClick={handleSaveFeeSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center', marginTop: 14 }}>
+                  {saving ? 'Saving…' : '💾 Save Fee Settings'}
                 </Btn>
               </div>
             </Section>

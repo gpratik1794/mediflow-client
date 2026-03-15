@@ -126,12 +126,54 @@ export default function Appointments() {
     logActivity(centreId, { action: 'appt_status_changed', label: labelMap[status] || 'Status Changed', detail: appt?.patientName || apptId, by: user?.email || '' })
   }
 
-  async function quickMarkFee(e, apptId, paymentStatus) {
+  async function quickMarkFee(e, apptId, paymentStatus, feeAmount) {
     e.stopPropagation()
     setMarkingFee(m => ({ ...m, [apptId]: true }))
-    await updateAppointment(centreId, apptId, { paymentStatus })
-    setAppointments(a => a.map(x => x.id === apptId ? { ...x, paymentStatus } : x))
+    const updateData = { paymentStatus }
+    if (feeAmount !== undefined && feeAmount !== '') updateData.consultationFee = String(feeAmount)
+    await updateAppointment(centreId, apptId, updateData)
+    setAppointments(a => a.map(x => x.id === apptId ? { ...x, paymentStatus, consultationFee: feeAmount !== undefined ? String(feeAmount) : x.consultationFee } : x))
     setMarkingFee(m => ({ ...m, [apptId]: false }))
+  }
+
+  // ── Fee confirmation modal state ──
+  const [feeModal, setFeeModal] = useState(null) // { appt, suggestedFee, feeType }
+  const [feeModalAmt, setFeeModalAmt] = useState('')
+
+  function openFeeModal(e, appt) {
+    e.stopPropagation()
+    // Find doctor config
+    const docObj = (profile?.doctors || []).find(d => d.name === appt.doctorName) || profile?.doctors?.[0] || {}
+    const firstFee  = docObj.firstVisitFee  || ''
+    const repeatFee = docObj.repeatVisitFee || ''
+    const resetMonths = Number(docObj.feeResetMonths) || 0
+
+    // Determine fee type based on last visit date
+    let feeType = 'first'
+    let suggestedFee = firstFee
+    if (appt.lastClinicVisit) {
+      const lastVisit  = new Date(appt.lastClinicVisit)
+      const monthsDiff = (new Date() - lastVisit) / (1000 * 60 * 60 * 24 * 30.44)
+      if (resetMonths > 0 && monthsDiff > resetMonths) {
+        feeType = 'first_reset'
+        suggestedFee = firstFee
+      } else if (repeatFee) {
+        feeType = 'repeat'
+        suggestedFee = repeatFee
+      }
+    }
+
+    // Use existing fee if already set
+    const effectiveFee = appt.consultationFee || suggestedFee || ''
+    setFeeModalAmt(String(effectiveFee))
+    setFeeModal({ appt, suggestedFee, feeType, firstFee, repeatFee })
+  }
+
+  async function confirmFeeModal(paymentStatus) {
+    if (!feeModal) return
+    await quickMarkFee({ stopPropagation: () => {} }, feeModal.appt.id, paymentStatus, feeModalAmt)
+    setFeeModal(null)
+    setFeeModalAmt('')
   }
 
   // ── Close appointment without prescription ──
@@ -317,18 +359,23 @@ export default function Appointments() {
     if (a.paymentStatus === 'free') return (
       <span style={{ fontSize: 11, color: 'var(--muted)' }}>Free</span>
     )
-    if (canMarkFee) return (
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        <button onClick={e => quickMarkFee(e, a.id, 'paid')} disabled={markingFee[a.id]}
-          style={{ ...iStyle, background: 'var(--green-bg)', color: 'var(--green)', padding: '4px 9px', opacity: markingFee[a.id] ? 0.5 : 1 }}>
-          {markingFee[a.id] ? '…' : `₹${a.consultationFee || '?'} Paid`}
-        </button>
-        <button onClick={e => quickMarkFee(e, a.id, 'free')} disabled={markingFee[a.id]}
-          style={{ ...iStyle, background: 'var(--bg)', color: 'var(--muted)', padding: '4px 9px', border: '1px solid var(--border)', opacity: markingFee[a.id] ? 0.5 : 1 }}>
-          Free
-        </button>
-      </div>
-    )
+    if (canMarkFee) {
+      const requireConfirm = profile?.feeConfirmationRequired !== false
+      return (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <button
+            onClick={e => requireConfirm ? openFeeModal(e, a) : quickMarkFee(e, a.id, 'paid', a.consultationFee)}
+            disabled={markingFee[a.id]}
+            style={{ ...iStyle, background: 'var(--green-bg)', color: 'var(--green)', padding: '4px 9px', opacity: markingFee[a.id] ? 0.5 : 1, border: '1px solid var(--green)' }}>
+            {markingFee[a.id] ? '…' : `₹${a.consultationFee || '?'} Paid`}
+          </button>
+          <button onClick={e => { e.stopPropagation(); quickMarkFee(e, a.id, 'free') }} disabled={markingFee[a.id]}
+            style={{ ...iStyle, background: 'var(--bg)', color: 'var(--muted)', padding: '4px 9px', border: '1px solid var(--border)', opacity: markingFee[a.id] ? 0.5 : 1 }}>
+            Free
+          </button>
+        </div>
+      )
+    }
     return <span style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600 }}>⏳ Pending</span>
   }
 
@@ -821,6 +868,78 @@ export default function Appointments() {
                 <button onClick={handleCloseWithoutRx} disabled={closingNoRx || !closeReason}
                   style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: closeReason ? '#F97316' : 'var(--border)', color: closeReason ? '#fff' : 'var(--muted)', cursor: closeReason ? 'pointer' : 'not-allowed', fontSize: 13, fontFamily: 'DM Sans, sans-serif', fontWeight: 700, transition: 'all 0.18s' }}>
                   {closingNoRx ? 'Closing…' : '✓ Close Visit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Fee Confirmation Modal ── */}
+      {feeModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.55)', zIndex: 1000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}
+          onClick={e => { if (e.target === e.currentTarget) { setFeeModal(null); setFeeModalAmt('') } }}>
+          <div style={{ background: 'var(--surface)', borderRadius: isMobile ? '20px 20px 0 0' : 16, width: '100%', maxWidth: isMobile ? '100%' : 400, overflow: 'hidden', boxShadow: '0 24px 60px rgba(13,43,62,0.2)' }}>
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg, #0B5E52, var(--teal))', padding: '22px 24px 18px' }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 3 }}>💰 Confirm Fee</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+                {feeModal.appt.patientName} · {feeModal.appt.appointmentTime}
+              </div>
+            </div>
+            <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Fee type badge */}
+              {feeModal.feeType && (
+                <div style={{ background: feeModal.feeType === 'repeat' ? '#F0FDF4' : '#EFF6FF', border: `1px solid ${feeModal.feeType === 'repeat' ? '#86EFAC' : '#BFDBFE'}`, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: feeModal.feeType === 'repeat' ? '#166534' : '#1D4ED8' }}>
+                  {feeModal.feeType === 'repeat' && `🔄 Repeat visit fee applied (₹${feeModal.repeatFee})`}
+                  {feeModal.feeType === 'first' && `✨ First visit fee applied (₹${feeModal.firstFee})`}
+                  {feeModal.feeType === 'first_reset' && `🔁 First visit fee re-applied — last visit was over ${(profile?.doctors || []).find(d => d.name === feeModal.appt.doctorName)?.feeResetMonths || '?'} months ago (₹${feeModal.firstFee})`}
+                </div>
+              )}
+
+              {/* Fee input */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--slate)', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginBottom: 6 }}>Fee Amount (₹)</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="number" min="0"
+                    value={feeModalAmt}
+                    onChange={e => setFeeModalAmt(e.target.value)}
+                    placeholder="Enter fee amount"
+                    autoFocus
+                    style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 15, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', outline: 'none', boxSizing: 'border-box' }}
+                    onFocus={e => e.target.style.borderColor = 'var(--teal)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  />
+                  {/* Quick fee buttons */}
+                  {feeModal.firstFee && String(feeModal.firstFee) !== feeModalAmt && (
+                    <button type="button" onClick={() => setFeeModalAmt(String(feeModal.firstFee))}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 11, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', whiteSpace: 'nowrap' }}>
+                      ₹{feeModal.firstFee} 1st
+                    </button>
+                  )}
+                  {feeModal.repeatFee && String(feeModal.repeatFee) !== feeModalAmt && (
+                    <button type="button" onClick={() => setFeeModalAmt(String(feeModal.repeatFee))}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 11, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', whiteSpace: 'nowrap' }}>
+                      ₹{feeModal.repeatFee} rpt
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setFeeModal(null); setFeeModalAmt('') }}
+                  style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', fontWeight: 500 }}>
+                  Cancel
+                </button>
+                <button onClick={() => confirmFeeModal('free')}
+                  style={{ padding: '11px 16px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif', color: 'var(--muted)', fontWeight: 500 }}>
+                  Free
+                </button>
+                <button onClick={() => confirmFeeModal('paid')} disabled={!feeModalAmt}
+                  style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: feeModalAmt ? 'var(--teal)' : 'var(--border)', color: feeModalAmt ? '#fff' : 'var(--muted)', cursor: feeModalAmt ? 'pointer' : 'not-allowed', fontSize: 13, fontFamily: 'DM Sans, sans-serif', fontWeight: 700 }}>
+                  ✓ Mark Paid {feeModalAmt ? `₹${feeModalAmt}` : ''}
                 </button>
               </div>
             </div>
