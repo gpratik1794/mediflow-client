@@ -17,7 +17,7 @@ export default function Layout({ children, title, action }) {
   }, [])
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', width: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', width: '100%', overflowX: 'clip' }}>
 
       {/* Sidebar — always rendered, mobile drawer behavior handled inside */}
       <Sidebar
@@ -113,9 +113,9 @@ export default function Layout({ children, title, action }) {
         <div style={{
           padding: isMobile ? '16px' : '28px 32px',
           flex: 1,
-          minWidth: 0,       // prevent flex child from overflowing
-          maxWidth: '100%',  // never exceed viewport
-          overflowX: 'hidden',
+          minWidth: 0,
+          maxWidth: '100%',
+          overflowX: 'clip',  // clips overflow but does NOT affect position:fixed children
         }}>
           {children}
         </div>
