@@ -873,20 +873,35 @@ export default function ClinicPatients() {
                       <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 8 }}>
                         Campaign Details — same for all patients
                       </label>
-                      {manualSlots.map(({ slot, variable }) => (
-                        <div key={slot} style={{ marginBottom: 10 }}>
-                          <label style={{ fontSize: 12, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                            {`{{${slot}}}`}{variable && variable !== '__custom__' ? ` — ${variable}` : ''}
-                          </label>
-                          <input type="text" value={customParams[slot] || ''}
-                            onChange={e => setCustomParams(cp => ({ ...cp, [slot]: e.target.value }))}
-                            placeholder={`e.g. ${slot === 2 ? '18/3/2026 or Free Diabetes Camp' : `Value for param ${slot}`}`}
-                            style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box' }}
-                            onFocus={e => e.target.style.borderColor = 'var(--teal)'}
-                            onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                          />
-                        </div>
-                      ))}
+                      <style>{`
+                        @keyframes softPulse {
+                          0%, 100% { border-color: #FCA5A5; box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+                          50% { border-color: #EF4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }
+                        }
+                        .param-required { animation: softPulse 2s ease-in-out infinite; }
+                      `}</style>
+                      {manualSlots.map(({ slot, variable }) => {
+                        const isEmpty = !customParams[slot]?.trim()
+                        return (
+                          <div key={slot} style={{ marginBottom: 10 }}>
+                            <label style={{ fontSize: 12, color: isEmpty ? '#DC2626' : 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                              {`{{${slot}}}`}{variable && variable !== '__custom__' ? ` — ${variable}` : ''}
+                              {isEmpty && <span style={{ marginLeft: 6, fontSize: 10, color: '#EF4444', fontWeight: 700 }}>fill this in</span>}
+                            </label>
+                            <input type="text" value={customParams[slot] || ''}
+                              onChange={e => setCustomParams(cp => ({ ...cp, [slot]: e.target.value }))}
+                              placeholder={`e.g. ${slot === 2 ? '18/3/2026 or Free Diabetes Camp' : `Value for param ${slot}`}`}
+                              className={isEmpty ? 'param-required' : ''}
+                              style={{ width: '100%', border: `1.5px solid ${isEmpty ? '#FCA5A5' : 'var(--border)'}`, borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box', background: isEmpty ? '#FFF5F5' : '#fff' }}
+                              onFocus={e => { e.target.style.borderColor = 'var(--teal)'; e.target.style.background = '#fff'; e.target.classList.remove('param-required') }}
+                              onBlur={e => {
+                                if (!e.target.value.trim()) { e.target.style.borderColor = '#FCA5A5'; e.target.style.background = '#FFF5F5'; e.target.classList.add('param-required') }
+                                else { e.target.style.borderColor = 'var(--border)'; e.target.style.background = '#fff' }
+                              }}
+                            />
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </>

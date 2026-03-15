@@ -123,11 +123,11 @@ export default function NewAppointment() {
     setRescheduling(true)
     try {
       await updateAppointment(centreId, dupAppt.id, { status: 'rescheduled' })
-      // Free up the slot — update bookedSlots
       setBookedSlots(prev => prev.filter(s => s !== dupAppt.appointmentTime))
-      setDupChoice('same')
+      setDupChoice('reschedule')
       setDupAppt(null)
-      setToast({ message: `Previous slot (${dupAppt.appointmentTime}) freed — book new slot below.`, type: 'success' })
+      // Clear previously selected slot so user must pick a new one
+      setForm(f => ({ ...f, appointmentTime: '' }))
     } catch (e) {
       setToast({ message: 'Reschedule failed. Try again.', type: 'error' })
     }
@@ -341,6 +341,53 @@ export default function NewAppointment() {
                       <div style={{ fontSize: 11, color: 'var(--teal)', marginTop: 2 }}>Frees the {dupAppt.appointmentTime !== 'Walk-in (no slot)' ? dupAppt.appointmentTime : 'walk-in'} slot — pick a new time below</div>
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* ── After reschedule: inline slot picker ── */}
+              {dupChoice === 'reschedule' && (
+                <div style={{ background: '#E6F7F5', border: '1.5px solid var(--teal)', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--teal)', marginBottom: 2 }}>
+                    ✓ Previous slot released — pick a new time
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--teal)', marginBottom: 12 }}>Select date and slot below, then confirm booking</div>
+
+                  {/* Inline date picker */}
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</label>
+                    <input type="date" value={form.date} min={today}
+                      onChange={e => setForm(f => ({ ...f, date: e.target.value, appointmentTime: '' }))}
+                      style={{ ...iStyle, background: '#fff' }} />
+                  </div>
+
+                  {/* Inline slot grid */}
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      Time Slot {form.appointmentTime && <span style={{ color: 'var(--teal)', fontWeight: 700 }}>→ {form.appointmentTime} ✓</span>}
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, maxHeight: 160, overflowY: 'auto' }}>
+                      {TIME_SLOTS.map(slot => {
+                        const isBooked   = slot !== 'Walk-in (no slot)' && bookedSlots.includes(slot)
+                        const isSel      = form.appointmentTime === slot
+                        const isDisabled = isBooked
+                        return (
+                          <button key={slot} type="button"
+                            onClick={() => !isDisabled && setForm(f => ({ ...f, appointmentTime: slot }))}
+                            disabled={isDisabled}
+                            style={{ padding: '7px 4px', borderRadius: 7, border: '1.5px solid', borderColor: isSel ? 'var(--teal)' : 'var(--border)', background: isSel ? 'var(--teal)' : isDisabled ? 'var(--bg)' : '#fff', color: isSel ? '#fff' : isDisabled ? 'var(--muted)' : 'var(--slate)', fontSize: 11, cursor: isDisabled ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif', fontWeight: isSel ? 700 : 400, opacity: isDisabled ? 0.4 : 1 }}>
+                            {slot === 'Walk-in (no slot)' ? 'Walk-in' : slot}
+                            {isBooked && <span style={{ display: 'block', fontSize: 8, color: 'var(--red)', marginTop: 1 }}>Booked</span>}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {form.appointmentTime && (
+                    <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--teal)', borderRadius: 8, fontSize: 12, color: '#fff', fontWeight: 600, textAlign: 'center' }}>
+                      New slot: {form.date} · {form.appointmentTime} — scroll down and confirm booking ↓
+                    </div>
+                  )}
                 </div>
               )}
 
