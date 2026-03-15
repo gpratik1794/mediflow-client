@@ -102,28 +102,27 @@ function timeToMins(timeStr) {
 }
 
 /**
- * getNextToken — assigns token based on slot position in the day, not booking order.
+ * getNextToken — assigns token based on chosen system.
  *
- * Logic:
- * 1. Get all non-cancelled appointments for the date + session.
- * 2. Collect every unique time slot that is already booked OR being booked now.
- * 3. Sort all slots chronologically.
- * 4. The token for a given slot = its 1-based position in that sorted list.
+ * tokenSystem = 'fixed' (default):
+ *   Token = slot's absolute position from session start time.
+ *   11:00=1, 11:10=2, 11:20=3, 11:30=4 — always, regardless of bookings.
+ *   Requires slotGenerationFn to know all possible slots, OR falls back to
+ *   counting all slots that exist + the new one sorted chronologically.
+ *   Walk-ins get max(existing tokens) + 1.
  *
- * This means:
- *   11:00 AM → token 1  (first slot of morning)
- *   11:10 AM → token 2
- *   11:20 AM → token 3
- * ...regardless of what order patients book.
+ * tokenSystem = 'relative':
+ *   Token = position among booked slots only (original behaviour).
+ *   Only booked slots count — no gaps.
  *
- * Walk-ins always get max(existing tokens) + 1 (appended at end).
- *
- * @param centreId   - clinic UID
- * @param dateStr    - 'yyyy-MM-dd'
- * @param session    - 'morning' | 'evening' | null
- * @param slotTime   - the slot the new patient is booking (e.g. '11:20 AM')
+ * @param centreId        - clinic UID
+ * @param dateStr         - 'yyyy-MM-dd'
+ * @param session         - 'morning' | 'evening' | null
+ * @param slotTime        - slot the new patient is booking (e.g. '11:20 AM')
+ * @param tokenSystem     - 'fixed' | 'relative' (pass from profile.tokenSystem)
+ * @param allSessionSlots - full list of possible slots for this session (for fixed mode)
  */
-export async function getNextToken(centreId, dateStr, session = null, slotTime = null) {
+export async function getNextToken(centreId, dateStr, session = null, slotTime = null, tokenSystem = 'fixed', allSessionSlots = []) {
   const appts = await getAppointments(centreId, dateStr)
 
   // Filter to this session, exclude cancelled
@@ -134,28 +133,45 @@ export async function getNextToken(centreId, dateStr, session = null, slotTime =
     return apptSession === session
   })
 
-  // Walk-in: no slot time → append after last token
+  // Walk-in: no slot time → always append after last token
   if (!slotTime || slotTime === 'Walk-in (no slot)') {
     const tokens = sessionAppts.map(a => a.tokenNumber || 0)
     return tokens.length > 0 ? Math.max(...tokens) + 1 : 1
   }
 
-  // Collect all unique slot times in this session, including the new slot being booked
+  // ── FIXED MODE ──────────────────────────────────────────────────────────────
+  // Token = slot's position in the full session slot list (all possible slots)
+  if (tokenSystem === 'fixed') {
+    if (allSessionSlots.length > 0) {
+      // We have the full slot list — use exact position
+      const position = allSessionSlots.findIndex(s => s === slotTime)
+      return position >= 0 ? position + 1 : sessionAppts.length + 1
+    }
+    // Fallback: infer position from all slots that have ever been booked + new slot
+    // This covers cases where allSessionSlots isn't passed
+    const bookedSlotTimes = new Set(
+      sessionAppts
+        .map(a => a.appointmentTime)
+        .filter(t => t && t !== 'Walk-in (no slot)')
+    )
+    bookedSlotTimes.add(slotTime)
+    const sorted = Array.from(bookedSlotTimes).sort((a, b) => (timeToMins(a) ?? 9999) - (timeToMins(b) ?? 9999))
+    return sorted.indexOf(slotTime) + 1
+  }
+
+  // ── RELATIVE MODE ───────────────────────────────────────────────────────────
+  // Token = position among booked slots only
   const allSlotTimes = new Set(
     sessionAppts
       .map(a => a.appointmentTime)
       .filter(t => t && t !== 'Walk-in (no slot)')
   )
-  allSlotTimes.add(slotTime)  // ensure the new slot is included even if first booking
-
-  // Sort chronologically
+  allSlotTimes.add(slotTime)
   const sortedSlots = Array.from(allSlotTimes).sort((a, b) => {
     const ma = timeToMins(a) ?? 9999
     const mb = timeToMins(b) ?? 9999
     return ma - mb
   })
-
-  // Token = 1-based position of this slot in the sorted list
   const position = sortedSlots.indexOf(slotTime) + 1
   return position > 0 ? position : (sessionAppts.length + 1)
 }

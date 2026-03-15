@@ -139,7 +139,8 @@ export default function NewAppointment() {
           : currentMins < 14 * 60 ? 'morning' : 'evening'
 
       // Step 1: Create the appointment with a temporary token
-      const tokenNumber = await getNextToken(centreId, form.date, slotSession, form.appointmentTime)
+      const tokenSystem = profile?.tokenSystem || 'fixed'
+      const tokenNumber = await getNextToken(centreId, form.date, slotSession, form.appointmentTime, tokenSystem, slotSession === 'morning' ? MORNING_SLOTS : EVENING_SLOTS)
       const apptId = await createAppointment(centreId, { ...form, tokenNumber, session: slotSession, status: 'scheduled' })
 
       // Step 2: Re-tokenize ALL appointments in this session by slot time position
@@ -168,15 +169,31 @@ export default function NewAppointment() {
         const slottedAppts = sessionAppts.filter(a => a.appointmentTime && a.appointmentTime !== 'Walk-in (no slot)')
         const walkinAppts  = sessionAppts.filter(a => !a.appointmentTime || a.appointmentTime === 'Walk-in (no slot)')
 
-        const uniqueSlots = [...new Set(slottedAppts.map(a => a.appointmentTime))].sort((a,b) => toMins(a) - toMins(b))
-
-        // Assign correct token to each appointment
+        let uniqueSlots
         const updates = []
-        slottedAppts.forEach(a => {
-          const correctToken = uniqueSlots.indexOf(a.appointmentTime) + 1
-          if (a.tokenNumber !== correctToken) updates.push({ id: a.id, tokenNumber: correctToken })
-        })
-        const walkinOffset = uniqueSlots.length
+        if (tokenSystem === 'fixed') {
+          // Fixed mode: use full slot list as source of truth for position
+          const fullSlots = (slotSession === 'morning' ? MORNING_SLOTS : EVENING_SLOTS).filter(s => s !== 'Walk-in (no slot)')
+          // Only include slots that actually have bookings
+          const bookedSlotSet = new Set(slottedAppts.map(a => a.appointmentTime))
+          // Token = position in FULL slot list, not just booked ones
+          uniqueSlots = fullSlots // use full list for position lookup
+          slottedAppts.forEach(a => {
+            const correctToken = fullSlots.indexOf(a.appointmentTime) + 1
+            if (correctToken > 0 && a.tokenNumber !== correctToken) updates.push({ id: a.id, tokenNumber: correctToken })
+          })
+        } else {
+          // Relative mode: only booked slots count
+          uniqueSlots = [...new Set(slottedAppts.map(a => a.appointmentTime))].sort((a,b) => toMins(a) - toMins(b))
+          slottedAppts.forEach(a => {
+            const correctToken = uniqueSlots.indexOf(a.appointmentTime) + 1
+            if (a.tokenNumber !== correctToken) updates.push({ id: a.id, tokenNumber: correctToken })
+          })
+        }
+
+        const walkinOffset = tokenSystem === 'fixed'
+          ? (slotSession === 'morning' ? MORNING_SLOTS : EVENING_SLOTS).filter(s => s !== 'Walk-in (no slot)').length
+          : uniqueSlots.length
         walkinAppts.forEach((a, i) => {
           const correctToken = walkinOffset + i + 1
           if (a.tokenNumber !== correctToken) updates.push({ id: a.id, tokenNumber: correctToken })

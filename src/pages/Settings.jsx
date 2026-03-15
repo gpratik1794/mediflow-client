@@ -1446,6 +1446,7 @@ export default function Settings() {
     doctors: [],
     vaccinationReminderDays: '7,3,1',
     fallbackNotifyNumber: '',
+    tokenSystem: 'fixed',
   })
 
   useEffect(() => {
@@ -1465,6 +1466,7 @@ export default function Settings() {
         doctors:             profile.doctors             || [],
         vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
         fallbackNotifyNumber: profile.fallbackNotifyNumber || '',
+        tokenSystem: profile.tokenSystem || 'fixed',
       }))
     }
   }, [profile])
@@ -1493,6 +1495,7 @@ export default function Settings() {
   function handleSaveBilling()             { saveFields({ gst: form.gst, gstNumber: form.gstNumber }) }
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
   function handleSaveDoctors()             { saveFields({ doctors: form.doctors }) }
+  function handleSaveAppointmentSettings() { saveFields({ tokenSystem: form.tokenSystem }) }
 
   // ── Staff functions ──────────────────────────────────────────────────────
   async function loadStaffList() {
@@ -1755,6 +1758,75 @@ export default function Settings() {
             <Section title="Appointment Settings">
               <div style={{ background: '#F0F9FF', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: '#0369A1', lineHeight: 1.8 }}>
                 💡 Slot duration, session timings, weekly off, and late check-in penalty are now configured <strong>per doctor</strong> in the Doctors tab. Each doctor can have their own independent schedule.
+              </div>
+
+              {/* ── Token Number System ── */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 4 }}>Token Number System</div>
+                <div style={{ fontSize: 12, color: 'var(--slate)', marginBottom: 14, lineHeight: 1.7 }}>
+                  Controls how token numbers are assigned to appointments.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    {
+                      value: 'fixed',
+                      label: 'Fixed Slot Tokens',
+                      emoji: '🔢',
+                      desc: 'Token is permanently tied to the slot time. If your session starts at 11:00 AM with 10-min slots — 11:00 AM = Token 1, 11:10 AM = Token 2, 11:20 AM = Token 3, always. Even if 11:30 is the only booked slot, it gets Token 4. Patients know their token number before arriving.',
+                    },
+                    {
+                      value: 'relative',
+                      label: 'Booking-Relative Tokens',
+                      emoji: '📋',
+                      desc: 'Token is assigned based on position among booked slots only. If only 11:30 is booked, it gets Token 1. When 11:10 is booked later, it becomes Token 1 and 11:30 becomes Token 2. Tokens are always compact with no gaps.',
+                    },
+                  ].map(opt => {
+                    const selected = (form.tokenSystem || 'fixed') === opt.value
+                    return (
+                      <div
+                        key={opt.value}
+                        onClick={() => setForm(f => ({ ...f, tokenSystem: opt.value }))}
+                        style={{
+                          border: `2px solid ${selected ? 'var(--teal)' : 'var(--border)'}`,
+                          borderRadius: 12,
+                          padding: '14px 16px',
+                          cursor: 'pointer',
+                          background: selected ? 'var(--teal-light)' : 'var(--surface)',
+                          transition: 'all 0.18s',
+                          display: 'flex',
+                          gap: 12,
+                          alignItems: 'flex-start',
+                        }}
+                      >
+                        <div style={{
+                          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                          background: selected ? 'var(--teal)' : 'var(--bg)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                        }}>
+                          {opt.emoji}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: selected ? 'var(--teal)' : 'var(--navy)' }}>{opt.label}</span>
+                            {selected && <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--teal)', color: '#fff', padding: '2px 8px', borderRadius: 20 }}>ACTIVE</span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--slate)', lineHeight: 1.7 }}>{opt.desc}</div>
+                        </div>
+                        <div style={{
+                          width: 20, height: 20, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                          border: `2px solid ${selected ? 'var(--teal)' : 'var(--border)'}`,
+                          background: selected ? 'var(--teal)' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {selected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <Btn type="button" onClick={handleSaveAppointmentSettings} disabled={saving} style={{ width: '100%', justifyContent: 'center', marginTop: 14 }}>
+                  {saving ? 'Saving…' : '💾 Save Token Settings'}
+                </Btn>
               </div>
             </Section>
 
