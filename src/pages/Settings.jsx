@@ -417,10 +417,46 @@ function CampaignInlineTest({ campaign, centreName, campaigns }) {
       setStatus('fail'); setDetail('Enter a valid 10-digit phone number.'); return
     }
     setStatus('sending'); setDetail('')
-    const result = await sendCampaign(
-      campaigns, campaign.purpose, phone,
-      ['Test Patient', centreName || 'Test Centre', '500']
-    )
+
+    // Build dummy params matching the exact param count of this campaign
+    // Uses paramMapping variable names to fill sensible test values
+    const parsed     = parseCurl(campaign.curl)
+    const paramCount = parsed?.paramCount || 1
+    const mapping    = campaign.paramMapping || []
+
+    const DUMMY_VALUES = {
+      patientName:      'Test Patient',
+      childName:        'Test Child',
+      parentName:       'Parent Name',
+      guardianName:     'Guardian Name',
+      doctorName:       'Dr. Test',
+      centreName:       centreName || 'Test Clinic',
+      apptDate:         new Date().toLocaleDateString('en-IN'),
+      apptTime:         '11:00 AM',
+      nextVaccineName:  'Test Vaccine',
+      nextVaccineDate:  new Date().toLocaleDateString('en-IN'),
+      vaccineName:      'Test Vaccine',
+      givenDate:        new Date().toLocaleDateString('en-IN'),
+      nextVaccineInfo:  'Due in 4 weeks',
+      billAmount:       '500',
+      visitDate:        new Date().toLocaleDateString('en-IN'),
+      customParam1:     'Test Value 1',
+      customParam2:     'Test Value 2',
+    }
+
+    // Build params array — use mapping variable if available, else sensible fallback
+    const testParams = Array.from({ length: paramCount }, (_, i) => {
+      const variable = mapping[i]
+      if (variable && variable !== '__custom__' && DUMMY_VALUES[variable]) {
+        return DUMMY_VALUES[variable]
+      }
+      // Position-based fallbacks for unmapped slots
+      if (i === 0) return 'Test Patient'
+      if (i === 1) return centreName || 'Test Clinic'
+      return `Test Value ${i + 1}`
+    })
+
+    const result = await sendCampaign(campaigns, campaign.purpose, phone, testParams)
     if (result.ok) {
       setStatus('ok'); setDetail(`Sent to ${phone}. Check WhatsApp.`)
     } else {
