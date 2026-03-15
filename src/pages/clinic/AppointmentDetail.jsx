@@ -251,33 +251,15 @@ export default function AppointmentDetail() {
                     </React.Fragment>
                   ))}
                 </div>
-                <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
-                  {/* ── In Consultation: two clear options ── */}
-                  {appt.status === 'in-consultation' && canPrescribe && (
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      <button
-                        onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}
-                        style={{ flex: 1, padding: '12px 10px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
-                        ✍ Write Prescription
-                      </button>
-                      <button
-                        onClick={() => setCloseNoRxModal(true)}
-                        style={{ flex: 1, padding: '12px 10px', borderRadius: 10, border: '1.5px solid var(--green)', background: 'var(--green-bg)', color: 'var(--green)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
-                        ✓ Close Visit
-                      </button>
-                    </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {currentIdx < STATUS_FLOW.length - 1 && appt.status !== 'in-consultation' && (
+                    <Btn onClick={() => handleStatusUpdate(STATUS_FLOW[currentIdx + 1])} style={{ flex: 1, justifyContent: 'center' }}>
+                      → Move to {STATUS_LABELS[STATUS_FLOW[currentIdx + 1]]}
+                    </Btn>
                   )}
-                  {/* Other status transitions */}
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    {currentIdx < STATUS_FLOW.length - 1 && appt.status !== 'in-consultation' && (
-                      <Btn onClick={() => handleStatusUpdate(STATUS_FLOW[currentIdx + 1])} style={{ flex: 1, justifyContent: 'center' }}>
-                        → Move to {STATUS_LABELS[STATUS_FLOW[currentIdx + 1]]}
-                      </Btn>
-                    )}
-                    {appt.status !== 'cancelled' && appt.status !== 'done' && (
-                      <Btn variant="danger" onClick={() => handleStatusUpdate('cancelled')} style={{ justifyContent: 'center' }}>Cancel</Btn>
-                    )}
-                  </div>
+                  {appt.status !== 'cancelled' && appt.status !== 'done' && (
+                    <Btn variant="danger" onClick={() => handleStatusUpdate('cancelled')} style={{ justifyContent: 'center' }}>Cancel</Btn>
+                  )}
                 </div>
               </div>
             </Card>
@@ -453,17 +435,6 @@ export default function AppointmentDetail() {
             </div>
           </Card>
 
-          {/* Write prescription prompt card — doctor only */}
-          {canPrescribe && appt.status === 'in-consultation' && (
-            <div style={{ background: 'var(--teal)', borderRadius: 'var(--radius)', padding: '16px 20px', textAlign: 'center' }}>
-              <div style={{ color: '#fff', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Patient is in consultation</div>
-              <Btn onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}
-                style={{ background: '#fff', color: 'var(--teal)', width: '100%', justifyContent: 'center' }}>
-                ✍ Write Prescription
-              </Btn>
-            </div>
-          )}
-
           {/* WhatsApp Activity — doctor / owner only */}
           {!isReceptionist && (
             <Card>
@@ -474,7 +445,36 @@ export default function AppointmentDetail() {
         </div>
       </div>
 
-      {/* Prescription block modal */}
+      {/* ── Spacer so content isn't hidden behind floating bar ── */}
+      {canPrescribe && appt.status === 'in-consultation' && (
+        <div style={{ height: isMobile ? 100 : 0 }} />
+      )}
+
+      {/* ── Floating Action Bar — doctor, in-consultation only ── */}
+      {canPrescribe && appt.status === 'in-consultation' && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: 'var(--surface)',
+          borderTop: '1px solid var(--border)',
+          boxShadow: '0 -8px 32px rgba(13,43,62,0.10)',
+          padding: '10px 16px 24px',
+          zIndex: 100,
+        }}>
+          {/* Primary */}
+          <button
+            onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}
+            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', marginBottom: 8 }}>
+            ✍ Write Prescription
+          </button>
+          {/* Secondary pill */}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button onClick={() => setCloseNoRxModal(true)}
+              style={{ padding: '7px 20px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
+              ✓ Close Visit Without Prescription
+            </button>
+          </div>
+        </div>
+      )}
       {/* ── Block In-Consultation Modal ── */}
       {blockingAppt && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.55)', zIndex: 200, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }}>
