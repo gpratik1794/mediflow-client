@@ -119,7 +119,7 @@ export function CardHeader({ title, sub, action }) {
       alignItems: mobile && action ? 'flex-start' : 'center',
       justifyContent: 'space-between',
       gap: mobile && action ? 12 : 0,
-      padding: mobile ? '14px 16px' : '18px 22px',
+      padding: mobile ? '12px 12px' : '18px 22px',
       borderBottom: '1px solid var(--border)',
     }}>
       <div style={{ flexShrink: 0 }}>

@@ -496,17 +496,18 @@ export default function Appointments() {
 
         {/* ── Mobile controls: date + search below header ── */}
         {isMobile && (
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* Date row */}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Date row — constrained to full width */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', width: '100%' }}>
               <button onClick={() => { const d = new Date(viewDate + 'T00:00:00'); d.setDate(d.getDate()-1); setViewDate(format(d,'yyyy-MM-dd')) }}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 18, color: 'var(--slate)', minHeight: 44, flexShrink: 0 }}>‹</button>
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, color: 'var(--slate)', minHeight: 44, flexShrink: 0 }}>‹</button>
               <div style={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>
                 {isToday ? 'Today' : format(new Date(viewDate + 'T00:00:00'), 'dd MMM yyyy')}
               </div>
               <button onClick={() => { const d = new Date(viewDate + 'T00:00:00'); d.setDate(d.getDate()+1); setViewDate(format(d,'yyyy-MM-dd')) }}
-                style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 18, color: 'var(--slate)', minHeight: 44, flexShrink: 0 }}>›</button>
-              <Btn variant="ghost" small onClick={load} style={{ flexShrink: 0 }}>🔄</Btn>
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 16, color: 'var(--slate)', minHeight: 44, flexShrink: 0 }}>›</button>
+              <button onClick={load}
+                style={{ padding: '8px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 14, minHeight: 44, flexShrink: 0 }}>🔄</button>
             </div>
             {!isToday && (
               <button onClick={() => setViewDate(today)}
@@ -514,10 +515,9 @@ export default function Appointments() {
                 Back to Today
               </button>
             )}
-            {/* Search row */}
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="🔍 Search name or phone…"
-              style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 14, outline: 'none', color: 'var(--navy)', width: '100%', boxSizing: 'border-box' }} />
+              style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 14, outline: 'none', color: 'var(--navy)', width: '100%', boxSizing: 'border-box' }} />
           </div>
         )}
 
