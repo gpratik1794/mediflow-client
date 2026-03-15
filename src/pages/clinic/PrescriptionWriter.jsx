@@ -290,12 +290,12 @@ export default function PrescriptionWriter() {
             </div>
           )}
 
-          {/* Fee reminder options (if pending fees exist) */}
-          {hasPending && (
+          {/* Session Summary — only show when no patients are waiting */}
+          {hasPending && !nextPatient && (
             <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>Fee reminder to doctor</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>Session Summary</div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
-                Auto-send a WhatsApp to doctor once receptionist marks fees, or on a timer:
+                Send a WhatsApp collection summary to the doctor once the receptionist marks fees, or on a timer:
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                 {[
@@ -641,20 +641,66 @@ export default function PrescriptionWriter() {
             </div>
           </Card>
 
-          <Btn onClick={handleSave} disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
+          </Card>
+
+          {/* Spacer so content isn't hidden behind floating bar */}
+          <div style={{ height: isMobile ? 90 : 0 }} />
+        </div>
+      </div>
+
+      {/* ── Floating Action Bar (mobile) ── */}
+      {isMobile && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: 'var(--surface)',
+          borderTop: '1px solid var(--border)',
+          boxShadow: '0 -8px 32px rgba(13,43,62,0.10)',
+          padding: '10px 16px 24px',
+          zIndex: 100,
+        }}>
+          {/* Primary: Save */}
+          <button onClick={handleSave} disabled={loading}
+            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'DM Sans, sans-serif', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 8, opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Saving…' : '💾 Save & Complete Visit'}
+          </button>
+          {/* Secondary pills */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+            {apptId && (
+              <button onClick={() => setShowCloseNoRx(true)}
+                style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid rgba(249,115,22,0.4)', background: '#FFF7ED', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: '#9A3412', cursor: 'pointer' }}>
+                ✗ Close Without Rx
+              </button>
+            )}
+            <button onClick={() => setLabTests(t => [...t, { name: '', instructions: '' }])}
+              style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
+              🧪 + Lab Test
+            </button>
+            <button onClick={handlePrint}
+              style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'none', fontSize: 12, fontWeight: 500, fontFamily: 'DM Sans, sans-serif', color: 'var(--slate)', cursor: 'pointer' }}>
+              🖨 Print
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop buttons — shown only on desktop */}
+      {!isMobile && (
+        <div style={{ position: 'fixed', bottom: 24, right: 32, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 100 }}>
+          <Btn onClick={handleSave} disabled={loading} style={{ justifyContent: 'center', minWidth: 220 }}>
             {loading ? 'Saving…' : '💾 Save & Complete Visit'}
           </Btn>
           {apptId && (
             <button onClick={() => setShowCloseNoRx(true)}
-              style={{ width: '100%', padding: '11px', borderRadius: 10, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', marginTop: 4 }}>
+              style={{ padding: '9px 16px', borderRadius: 10, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
               Close Without Prescription
             </button>
           )}
-          <Btn variant="ghost" onClick={handlePrint} style={{ width: '100%', justifyContent: 'center' }}>
+          <Btn variant="ghost" onClick={handlePrint} style={{ justifyContent: 'center' }}>
             🖨 Print Prescription
           </Btn>
         </div>
-      </div>
+      )}
+
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* ── Close Without Prescription Modal ── */}
@@ -707,7 +753,7 @@ export default function PrescriptionWriter() {
             </div>
           </div>
         </div>
-      )}}
+      )}
     </Layout>
   )
 }
