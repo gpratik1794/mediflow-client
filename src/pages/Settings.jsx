@@ -1419,6 +1419,104 @@ function PatientExport({ centreId, ownerEmail, centreName, user }) {
   )
 }
 
+// ── TAG_PRESET_COLORS — quick color swatches ─────────────────────────────────
+const TAG_PRESET_COLORS = [
+  '#F59E0B', '#EF4444', '#8B5CF6', '#3B82F6', '#EC4899',
+  '#10B981', '#06B6D4', '#F97316', '#6366F1', '#14B8A6',
+  '#84CC16', '#E11D48',
+]
+
+// ── Patient Tags Manager ──────────────────────────────────────────────────────
+// Used in Settings > Clinic tab — owner and each doctor can manage their own tags
+function PatientTagsManager({ centreId, tags, onChange, saving, onSave }) {
+  const [newName,  setNewName]  = useState('')
+  const [newColor, setNewColor] = useState(TAG_PRESET_COLORS[0])
+  const [err, setErr]           = useState('')
+
+  function handleAdd() {
+    const name = newName.trim()
+    if (!name)                                    { setErr('Enter a tag name'); return }
+    if (name.length > 30)                         { setErr('Tag name too long (max 30 chars)'); return }
+    if ((tags || []).some(t => t.name.toLowerCase() === name.toLowerCase()))
+                                                  { setErr('Tag already exists'); return }
+    onChange([...(tags || []), { name, color: newColor }])
+    setNewName(''); setNewColor(TAG_PRESET_COLORS[0]); setErr('')
+  }
+
+  function handleDelete(name) {
+    onChange((tags || []).filter(t => t.name !== name))
+  }
+
+  const iStyle = { padding: '9px 13px', borderRadius: 9, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'DM Sans, sans-serif', background: '#fff', color: 'var(--navy)', outline: 'none', flex: 1 }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ background: '#F0F9FF', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: '#0369A1', lineHeight: 1.8 }}>
+        💡 Tags are used to segment your patients for targeted WhatsApp campaigns in Marketing → Campaigns. Each tag you create here becomes a filter option. Tags are added to patients automatically from prescriptions, or manually from the patient record.
+      </div>
+
+      {/* Existing tags */}
+      {(tags || []).length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>No tags yet. Add your first tag below.</div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {(tags || []).map(t => (
+            <div key={t.name} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 10px 5px 10px', borderRadius: 20,
+              background: t.color + '20', border: `1.5px solid ${t.color}`,
+              fontSize: 13, fontWeight: 600, color: t.color,
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color, flexShrink: 0 }} />
+              {t.name}
+              <button type="button" onClick={() => handleDelete(t.name)} style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 0 2px',
+                fontSize: 13, color: t.color, lineHeight: 1, opacity: 0.7, fontFamily: 'DM Sans, sans-serif'
+              }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new tag row */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--slate)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Add New Tag</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            value={newName}
+            onChange={e => { setNewName(e.target.value); setErr('') }}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="e.g. Diabetes, Post-op, VIP"
+            maxLength={30}
+            style={{ ...iStyle, maxWidth: 220 }}
+          />
+          {/* Color swatches */}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {TAG_PRESET_COLORS.map(c => (
+              <button key={c} type="button" onClick={() => setNewColor(c)} style={{
+                width: 22, height: 22, borderRadius: '50%', background: c, border: `2.5px solid ${newColor === c ? 'var(--navy)' : 'transparent'}`,
+                cursor: 'pointer', padding: 0, flexShrink: 0,
+                boxShadow: newColor === c ? '0 0 0 1.5px white inset' : 'none',
+                transition: 'border 0.15s',
+              }} />
+            ))}
+          </div>
+          <button type="button" onClick={handleAdd} style={{
+            padding: '9px 16px', borderRadius: 9, border: 'none', background: 'var(--teal)',
+            color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap',
+          }}>+ Add</button>
+        </div>
+        {err && <div style={{ fontSize: 12, color: '#DC2626' }}>{err}</div>}
+      </div>
+
+      <Btn type="button" onClick={onSave} disabled={saving} style={{ width: '100%', justifyContent: 'center' }}>
+        {saving ? 'Saving…' : '💾 Save Tags'}
+      </Btn>
+    </div>
+  )
+}
+
 export default function Settings() {
   const { user, profile, maxStaff } = useAuth()
   const [toast, setToast]   = useState(null)
@@ -1447,6 +1545,7 @@ export default function Settings() {
     vaccinationReminderDays: '7,3,1',
     fallbackNotifyNumber: '',
     tokenSystem: 'fixed',
+    customPatientTags: [],
   })
 
   useEffect(() => {
@@ -1467,6 +1566,7 @@ export default function Settings() {
         vaccinationReminderDays: profile.vaccinationReminderDays || '7,3,1',
         fallbackNotifyNumber: profile.fallbackNotifyNumber || '',
         tokenSystem: profile.tokenSystem || 'fixed',
+        customPatientTags: profile.customPatientTags || [],
       }))
     }
   }, [profile])
@@ -1496,6 +1596,7 @@ export default function Settings() {
   function handleSaveVaccinationSettings() { saveFields({ vaccinationReminderDays: form.vaccinationReminderDays }) }
   function handleSaveDoctors()             { saveFields({ doctors: form.doctors }) }
   function handleSaveAppointmentSettings() { saveFields({ tokenSystem: form.tokenSystem }) }
+  function handleSavePatientTags()         { saveFields({ customPatientTags: form.customPatientTags }) }
 
   // ── Staff functions ──────────────────────────────────────────────────────
   async function loadStaffList() {
@@ -1857,6 +1958,17 @@ export default function Settings() {
                 </Btn>
               </Section>
             )}
+
+            {/* ── Patient Tags ── */}
+            <Section title="🏷️ Patient Tags">
+              <PatientTagsManager
+                centreId={user?.uid}
+                tags={form.customPatientTags || []}
+                onChange={tags => setForm(f => ({ ...f, customPatientTags: tags }))}
+                saving={saving}
+                onSave={handleSavePatientTags}
+              />
+            </Section>
           </div>
         )}
 

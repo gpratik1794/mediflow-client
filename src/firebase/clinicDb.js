@@ -483,3 +483,77 @@ export async function sendPatientListEmail(centreId, ownerEmail, centreName) {
   })
   return { ok: true }
 }
+
+// ── BROADCAST HISTORY ─────────────────────────────────────────────────────────
+// Firestore path: centres/{uid}/broadcastHistory/{auto-id}
+// Saved after every bulk WhatsApp campaign send from Marketing page
+
+/**
+ * Save a broadcast record after a campaign send
+ * @param {string} centreId
+ * @param {object} record - { name, templateName, tagFilters, audienceSize, mediaAttached, sentBy, recipients }
+ *   recipients: [{ phone, name, status: 'sent' | 'failed', error? }]
+ */
+export async function saveBroadcastHistory(centreId, record) {
+  if (!centreId) return null
+  try {
+    const ref = collection(db, 'centres', centreId, 'broadcastHistory')
+    const docRef = await addDoc(ref, {
+      name:          record.name          || '',
+      templateName:  record.templateName  || '',
+      tagFilters:    record.tagFilters    || [],
+      audienceSize:  record.audienceSize  || 0,
+      sentCount:     record.sentCount     || 0,
+      failedCount:   record.failedCount   || 0,
+      mediaAttached: record.mediaAttached || null, // { filename, url } or null
+      sentBy:        record.sentBy        || '',
+      recipients:    record.recipients    || [],   // [{ phone, name, status, error? }]
+      sentAt:        serverTimestamp(),
+    })
+    return docRef.id
+  } catch (e) {
+    console.error('[saveBroadcastHistory] failed:', e)
+    return null
+  }
+}
+
+/**
+ * Fetch broadcast history for a centre, newest first
+ */
+export async function getBroadcastHistory(centreId, limitCount = 50) {
+  if (!centreId) return []
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'centres', centreId, 'broadcastHistory'),
+      orderBy('sentAt', 'desc'),
+      limit(limitCount)
+    ))
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('[getBroadcastHistory] failed:', e)
+    return []
+  }
+}
+
+// ── CUSTOM PATIENT TAGS ───────────────────────────────────────────────────────
+// Stored in centres/{uid}/profile/main as customPatientTags: [{name, color, createdBy}]
+// Both owner and each doctor can manage their own tag list
+
+/**
+ * Save the full custom tags array to Firestore profile
+ * @param {string} centreId  - owner UID (profile?._centreId || user?.uid)
+ * @param {Array}  tags      - [{name, color, createdBy}]
+ */
+export async function saveCustomPatientTags(centreId, tags) {
+  if (!centreId) return
+  try {
+    await setDoc(
+      doc(db, 'centres', centreId, 'profile', 'main'),
+      { customPatientTags: tags },
+      { merge: true }
+    )
+  } catch (e) {
+    console.error('[saveCustomPatientTags] failed:', e)
+    throw e
+  }
+}
