@@ -201,7 +201,7 @@ export default function AppointmentDetail() {
 
   const currentIdx = STATUS_FLOW.indexOf(appt.status)
   const sc = STATUS_COLORS[appt.status] || STATUS_COLORS.scheduled
-  const showPrescWarning = appt.status === 'in-consultation' && !hasPrescriptionForThisAppt() && canPrescribe
+  const showPrescWarning = false  // No longer block — doctor chooses Write Rx or Close Visit directly
 
   const iStyle = { width: '100%', border: '1.5px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'DM Sans, sans-serif', color: 'var(--navy)', boxSizing: 'border-box', transition: 'border 0.18s' }
 
@@ -211,11 +211,6 @@ export default function AppointmentDetail() {
       action={
         <div style={{ display: 'flex', gap: 8 }}>
           <Btn variant="ghost" small onClick={() => navigate(-1)}>← Back</Btn>
-          {canPrescribe && appt.status === 'in-consultation' && (
-            <Btn small onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}>
-              {isMobile ? '✍ Rx' : '✍ Write Prescription'}
-            </Btn>
-          )}
         </div>
       }
     >
@@ -223,19 +218,6 @@ export default function AppointmentDetail() {
 
         {/* ── LEFT ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-          {/* Prescription warning (doctor only) */}
-          {showPrescWarning && (
-            <div style={{ background: '#FFF7ED', border: '1.5px solid #F97316', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <div>
-                <div style={{ fontWeight: 700, color: '#9A3412', fontSize: 13, marginBottom: 2 }}>✍ Write prescription before marking as Done</div>
-                <div style={{ fontSize: 12, color: '#C2410C' }}>A prescription must be saved before this appointment can be closed.</div>
-              </div>
-              <Btn small onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}>
-                ✍ Write Now
-              </Btn>
-            </div>
-          )}
 
           {/* ── Status tracker — DOCTOR / OWNER only ── */}
           {!isReceptionist && (
@@ -269,21 +251,33 @@ export default function AppointmentDetail() {
                     </React.Fragment>
                   ))}
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  {currentIdx < STATUS_FLOW.length - 1 && (
-                    STATUS_FLOW[currentIdx + 1] === 'done' && showPrescWarning ? (
-                      <button onClick={() => setPrescBlockModal(true)} style={{ flex: 1, padding: '10px 16px', borderRadius: 10, border: '1.5px solid #F97316', background: '#FFF7ED', color: '#9A3412', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
-                        🔒 Write Prescription First
+                <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
+                  {/* ── In Consultation: two clear options ── */}
+                  {appt.status === 'in-consultation' && canPrescribe && (
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={() => navigate(`/clinic/prescription/new?apptId=${id}&phone=${appt.phone}&name=${encodeURIComponent(appt.patientName)}&age=${appt.age}&gender=${appt.gender}`)}
+                        style={{ flex: 1, padding: '12px 10px', borderRadius: 10, border: 'none', background: 'var(--teal)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
+                        ✍ Write Prescription
                       </button>
-                    ) : (
+                      <button
+                        onClick={() => setCloseNoRxModal(true)}
+                        style={{ flex: 1, padding: '12px 10px', borderRadius: 10, border: '1.5px solid var(--green)', background: 'var(--green-bg)', color: 'var(--green)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', textAlign: 'center' }}>
+                        ✓ Close Visit
+                      </button>
+                    </div>
+                  )}
+                  {/* Other status transitions */}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    {currentIdx < STATUS_FLOW.length - 1 && appt.status !== 'in-consultation' && (
                       <Btn onClick={() => handleStatusUpdate(STATUS_FLOW[currentIdx + 1])} style={{ flex: 1, justifyContent: 'center' }}>
                         → Move to {STATUS_LABELS[STATUS_FLOW[currentIdx + 1]]}
                       </Btn>
-                    )
-                  )}
-                  {appt.status !== 'cancelled' && appt.status !== 'done' && (
-                    <Btn variant="danger" onClick={() => handleStatusUpdate('cancelled')} style={{ justifyContent: 'center' }}>Cancel</Btn>
-                  )}
+                    )}
+                    {appt.status !== 'cancelled' && appt.status !== 'done' && (
+                      <Btn variant="danger" onClick={() => handleStatusUpdate('cancelled')} style={{ justifyContent: 'center' }}>Cancel</Btn>
+                    )}
+                  </div>
                 </div>
               </div>
             </Card>
